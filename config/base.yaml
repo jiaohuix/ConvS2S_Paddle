@@ -1,0 +1,109 @@
+# Hyparams for dataset:
+data:
+  # The pattern to match training data files.
+  training_file: "wmt14_en_de/train.en,wmt14_en_de/train.de"
+  # The pattern to match validation data files.
+  validation_file: "wmt14_en_de/valid.en,wmt14_en_de/valid.de"
+  # The pattern to match test data files.
+  predict_file: "wmt14_en_de/test.en,wmt14_en_de/test.de"
+  # The file to output the translation results of predict_file to.
+  output_file: "output/predict.txt,output/reference.txt"
+  # The path of vocabulary file of source language.
+  src_vocab_fpath: "wmt14_en_de/vocab.en"
+  # The path of vocabulary file of target language.
+  tgt_vocab_fpath: "wmt14_en_de/vocab.de"
+  # The <bos>, <eos> and <unk> tokens in the dictionary.
+  special_token: ["<s>", "</s>", "<unk>","<pad>"]
+  # Used to pad vocab size to be multiple of pad_factor.
+  pad_vocab: False
+  pad_factor: 8
+
+# Hyparams for models:
+model:
+  # convs2s models name,choices: convs2s_iwslt_de_en,convs2s_wmt_en_ro,convs2s_wmt_en_de,convs2s_wmt_en_fr
+  model_name: convs2s_wmt_en_de
+  dropout: 0.2
+  # Path of trained parameter, to make prediction
+  init_from_params: "ckpt/epoch_110"
+#  init_from_params: ""
+  # The directory for saving models
+  save_model: "ckpt"
+  # These following five vocabularies related configurations will be set
+  # automatically according to the passed vocabulary path and special tokens.
+  # Size of source word dictionary.
+  src_vocab_size: 42243
+  # Size of target word dictionay
+  tgt_vocab_size: 43676
+  # Index for <bos> token
+  bos_idx: 0
+  # Index for <pad> token
+  pad_idx: 1
+  # Index for <eos> token
+  eos_idx: 2
+  # Index for <unk> token
+  unk_idx: 3
+  # Max length of sequences deciding the size of position encoding table.
+  min_length: 0
+  max_length: 1024
+  resume: ''
+
+# The hyper parameters for  optimizer.
+# This static learning_rate will be applied to the LearningRateScheduler
+# derived learning rate the to get the final learning rate.
+learning_strategy:
+  use_nesterov: True
+  momentum: 0.99
+  weight_decay: 1e-4
+  clip_norm: 0.1
+  # The parameters for learning rate scheduling."Reduce the learning rate by an order of magnitude after each epoch until it falls below 10−4"
+  learning_rate: 0.5
+  patience: 1
+  lr_shrink: 0.1
+  force_anneal: 50 # annneal based on lr_shrink
+  min_lr: 0.0001 # early stop
+  # The weight used to mix up the ground-truth distribution and the fixed
+  # uniform distribution in label smoothing when training.
+  # Set this as zero if label smoothing is not wanted.
+  label_smooth_eps: 0.1
+
+# Hyparams for training:
+train:
+  # Set seed for CE or debug
+  random_seed: 2021
+  # Whether to use cuda
+  use_gpu: True
+  num_workers: 0
+  # The number of epoches for training
+  max_epoch: 110
+  avg_steps: 5050
+  auto_cast: True
+  fp16_init_scale: 128
+  amp_scale_window: False
+  growth_interval: 128
+  accumulate_batchs: 4
+  # Args for reader, see reader.py for details
+  batch_size: 16
+  log_step: 200
+  # max tokens per batch, eg: 2k 4k 6k (12g,24g,32g  use amp)
+  max_tokens: 8000
+  # max batchsize         eg: 64 128 192,should match max_tokens
+  max_sentences: 64
+  batch_size_factor: 4
+  # The frequency to save trained models when training.
+  save_epoch: 1
+  stop_patience: -1
+  last_epoch: 0
+
+# Hyparams for generation:
+generate:
+  infer_batch_size: 128
+  infer_max_tokens: 4000
+  # The parameters for beam search.
+  beam_size: 5
+  max_out_len: 256
+  # The number of decoded sentences to output.
+  n_best: 1
+
+ngpus: -1
+eval: False
+SAVE: output
