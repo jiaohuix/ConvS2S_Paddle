@@ -1,28 +1,30 @@
-import math
 import os
 import time
 import paddle
 import argparse
 import logging
 import sys
-from data import prep_dataset,prep_loader
+from data import prep_dataset, prep_loader
 from tqdm import tqdm
 from eval import eval_model
-from utils import same_seeds,get_config,calc_ppl,save_model,\
-                  ReduceOnPlateauWithAnnael,ConvS2SMetric
+from utils import same_seeds, get_config, calc_ppl, save_model, ReduceOnPlateauWithAnnael
 from models import build_model
 import paddle.distributed as dist
-from paddlenlp.transformers import CrossEntropyCriterion,LinearDecayWithWarmup
+from paddlenlp.transformers import CrossEntropyCriterion
+
+# python main_multi_gpu_orig.py --config config/en2ro.yaml --last_epoch 60 --resume ckpt_ro/epoch_60
+
 parser = argparse.ArgumentParser(description='ConvS2S', add_help=True)
 parser.add_argument('-c', '--config', default='config/base.yaml', type=str, metavar='FILE', help='yaml file path')
 parser.add_argument('-m', '--mode', default='train', type=str, choices=['train', 'pred'])
 parser.add_argument('--ngpus', type=int, default=-1)
 parser.add_argument('--pretrained', type=str, default=None)
-parser.add_argument('--resume', type=str, default='')
-parser.add_argument('--last_epoch', type=int, default=0)
+parser.add_argument('--resume', type=str, default=None)
+parser.add_argument('--last_epoch', type=int, default=None)
 parser.add_argument('--eval', action='store_true')
 args = parser.parse_args()
 conf = get_config(args)
+
 log_format = "%(asctime)s %(message)s"
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format=log_format, datefmt="%m%d %I:%M:%S %p")
@@ -31,10 +33,10 @@ logger = logging.getLogger()
 fh = logging.FileHandler(os.path.join(conf.SAVE, 'log.txt'))
 fh.setFormatter(logging.Formatter(log_format))
 logger.addHandler(fh)
-# logger.info(f'config= {conf}')
+
 
 @paddle.no_grad()
-def validation(dataloader,model,criterion):
+def validation(dataloader, model, criterion):
     # Validation
     model.eval()
     total_smooth_loss = 0
@@ -46,35 +48,37 @@ def validation(dataloader,model,criterion):
             logits = model(src_tokens=src_tokens, prev_output_tokens=tgt_tokens)[0]
             sum_cost, avg_cost, token_num = criterion(logits, lbl_tokens)
             avg_nll_loss, avg_ppl = calc_ppl(logits, lbl_tokens, token_num, conf.model.pad_idx)
-            nll_loss=avg_nll_loss*token_num
+
+            nll_loss = avg_nll_loss * token_num
             dist.all_reduce(sum_cost)
             dist.all_reduce(nll_loss)
             dist.all_reduce(token_num)
 
-            total_smooth_loss+=sum_cost
-            total_nll_loss+=nll_loss
-            total_tokens+=token_num
+            total_smooth_loss += sum_cost
+            total_nll_loss += nll_loss
+            total_tokens += token_num
 
-        avg_smooth_loss = float(total_smooth_loss / total_tokens) /math.log(2)
-        avg_nll_loss = min(float(total_nll_loss / total_tokens), 100.) /math.log(2)
+        avg_smooth_loss = float(total_smooth_loss / total_tokens)
+        avg_nll_loss = min(float(total_nll_loss / total_tokens), 100.)
         avg_ppl = pow(2, avg_nll_loss)
 
-        logger.info(f"Eval rank:[{dist.get_rank()}] | Avg loss: {avg_smooth_loss:.3f} | nll_loss:{avg_nll_loss:.3f} | ppl: {avg_ppl:.3f} | ")
+        logger.info(
+            f"Eval rank:[{dist.get_rank()}] | Avg loss: {avg_smooth_loss:.3f} | nll_loss:{avg_nll_loss:.3f} | ppl: {avg_ppl:.3f} | ")
+
     model.train()
 
     return avg_smooth_loss, avg_nll_loss, avg_ppl
 
+
 def train_one_epoch(dataloader,
-          model,
-          criterion,
-          optimizer,
-          scaler,
-          epoch,
-          step,
-          metric,
-          debug_steps=100,
-          accum_iter=1,
-          scheduler=None): # for warmup
+                    model,
+                    criterion,
+                    optimizer,
+                    scaler,
+                    epoch,
+                    step,
+                    debug_steps=100,
+                    accum_iter=1):
     """Training for one epoch
     Args:
         dataloader: paddle.io.DataLoader, dataloader instance
@@ -92,7 +96,7 @@ def train_one_epoch(dataloader,
     model.train()
     # Train loop
     sentences = 0
-    tic_train=time.time()
+    tic_train = time.time()
     for batch_id, input_data in enumerate(dataloader):
         # forward
         (src_tokens, tgt_tokens, lbl_tokens) = input_data
@@ -111,23 +115,17 @@ def train_one_epoch(dataloader,
             # 训练模型
             scaler.minimize(optimizer, scaled)
             optimizer.clear_grad()
-
-        # aggregate metric
-        loss, nll_loss, ppl = metric.update(sum_cost, logits, target=lbl_tokens, sample_size=token_num,pad_id=conf.model.pad_idx)
-        # print(f'batchid:{batch_id},loss:{float(loss)},nll:{float(nll_loss)},ppl:{float(ppl)}')
         # log
-        if (batch_id+1) % debug_steps == 0:
+        if (batch_id + 1) % debug_steps == 0:
             avg_bsz = sentences / (batch_id + 1)
-            avg_total_steps = len(dataloader.dataset) // avg_bsz //dist.get_world_size()
-            loss, nll_loss, ppl = metric.accumulate()  # 返回累积batch的平均指标
+            avg_total_steps = len(dataloader.dataset) // avg_bsz // dist.get_world_size()
+            nll_loss, ppl = calc_ppl(logits, lbl_tokens, token_num, conf.model.pad_idx)
 
             logger.info(
                 f"Train rank:[{dist.get_rank()}] | Epoch: [{epoch}/{conf.train.max_epoch}] | Step: [{batch_id+1}/{avg_total_steps}] | Avg bsz:{avg_bsz:.1f} "
-                f"Avg loss: {float(loss):.3f} | nll_loss:{float(nll_loss):.3f} | ppl: {float(ppl):.3f} | "
+                f"Avg loss: {float(avg_cost):.3f} | nll_loss:{float(nll_loss):.3f} | ppl: {float(ppl):.3f} | "
                 f"Speed:{debug_steps / (time.time() - tic_train):.2f} step/s ")
             tic_train = time.time()
-
-        # if scheduler:scheduler.step()
         step += 1
 
     return step
@@ -147,30 +145,21 @@ def main_worker(*args):
     train_loader = prep_loader(conf, dataset_train, 'train', True)
     dev_loader = prep_loader(conf, dataset_val, 'dev', True)
     logger.info(f'Prep | Train num:{len(train_loader.dataset)} | Val num:{len(dev_loader.dataset)}')
-    if local_rank==0:
-        logger.info(f'cfg:{conf}')
     # 2. Create model
-    model=build_model(conf,is_test=False)
+    model = build_model(conf, is_test=False)
     model = paddle.DataParallel(model)
     # 3. Define criterion
     criterion = CrossEntropyCriterion(conf.learning_strategy.label_smooth_eps, pad_idx=conf.model.pad_idx)
-    metric=ConvS2SMetric()
     # 4. Define optimizer and lr_scheduler
     scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
                                           patience=conf.learning_strategy.patience,
                                           force_anneal=conf.learning_strategy.force_anneal,
                                           factor=conf.learning_strategy.lr_shrink,
-                                          min_lr=conf.learning_strategy.min_lr) # reduce the learning rate until it falls below 10−4
-    # scheduler=LinearDecayWithWarmup(learning_rate=conf.learning_strategy.learning_rate,
-    #                                 warmup=conf.learning_strategy.warmup,
-    #                                 last_epoch=conf.train.last_epoch,
-    #                                 total_steps=conf.train.max_epoch * conf.train.avg_steps)
-
+                                          min_lr=conf.learning_strategy.min_lr)  # reduce the learning rate until it falls below 10−4
     clip = paddle.nn.ClipGradByGlobalNorm(clip_norm=conf.learning_strategy.clip_norm)
     optimizer = paddle.optimizer.Momentum(
         learning_rate=scheduler,
         momentum=conf.learning_strategy.momentum,
-        weight_decay=float(conf.learning_strategy.weight_decay), # int object not callable error
         use_nesterov=conf.learning_strategy.use_nesterov,
         grad_clip=clip,
         parameters=model.parameters())
@@ -185,16 +174,13 @@ def main_worker(*args):
         model.set_dict(model_state)
         opt_state = paddle.load(optim_path)
         optimizer.set_state_dict(opt_state)
-        if conf.learning_strategy.learning_rate < optimizer.get_lr(): # 如果加载权重的学习率大，而需要调小学习率，用step调小
-            factor=optimizer.get_lr()//conf.learning_strategy.learning_rate
-            for i in range(1,factor+1):
-                scheduler.step(i)
         logger.info(
             f"----- Resume Training: Load model and optmizer states from {conf.model.resume}")
+
     # 6. Validation
     if conf.eval:
         logger.info('----- Start Validating')
-        val_loss,val_nll_loss, val_ppl = eval_model(model, dev_loader, criterion)
+        val_loss, val_nll_loss, val_ppl = eval_model(model, dev_loader, criterion)
         return
 
     # 6. Start training and validation
@@ -202,37 +188,34 @@ def main_worker(*args):
     scale_init = conf.train.fp16_init_scale
     growth_interval = conf.train.growth_interval if conf.train.amp_scale_window else 2000
     scaler = paddle.amp.GradScaler(init_loss_scaling=scale_init, incr_every_n_steps=growth_interval)
-    step_id=0
-    lowest_val_loss=0
-    num_runs=0
-    for epoch in range(last_epoch+1,conf.train.max_epoch+1):
+    step = 0
+    lowest_val_loss = 0
+    num_runs = 0
+    for epoch in range(last_epoch + 1, conf.train.max_epoch + 1):
         # train
         logger.info(f"Now training epoch {epoch}. LR={optimizer.get_lr():.6f}")
-        step_id=train_one_epoch(
-                            dataloader=train_loader,
-                            model=model,
-                            criterion=criterion,
-                            optimizer=optimizer,
-                            scaler=scaler,
-                            epoch=epoch,
-                            step=step_id,
-                            metric=metric,
-                            debug_steps=conf.train.log_step,
-                            accum_iter=conf.train.accumulate_batchs,
-                            scheduler=scheduler # for warmup
-                            )
-        metric.reset()
+        step = train_one_epoch(
+            dataloader=train_loader,
+            model=model,
+            criterion=criterion,
+            optimizer=optimizer,
+            scaler=scaler,
+            epoch=epoch,
+            step=step,
+            debug_steps=conf.train.log_step,
+            accum_iter=conf.train.accumulate_batchs)
+
         # evaluate model on valid data after one epoch
-        val_loss,val_nll_loss, val_ppl=validation(dev_loader,model,criterion)
+        val_loss, val_nll_loss, val_ppl = validation(dev_loader, model, criterion)
 
         # adjust learning rate when val ppl stops improving.
         scheduler.step(val_ppl)
         cur_lr = round(optimizer.get_lr(), 5)
         min_lr = round(conf.learning_strategy.min_lr, 5)
-        if local_rank==0:
+        if local_rank == 0:
             if cur_lr == min_lr:
                 save_model(conf.model, model, optimizer, dir_name=f"min_lr")
-                break # 学习率达到最小时退出训练
+                break
 
         # early stop
         if conf.train.stop_patience > 1:
@@ -247,7 +230,7 @@ def main_worker(*args):
                     break
 
         # save model after several epochs
-        if local_rank==0:
+        if local_rank == 0:
             if epoch % conf.train.save_epoch == 0:
                 save_model(conf.model, model, optimizer, dir_name=f"epoch_{epoch}")
 
@@ -256,11 +239,13 @@ def main_worker(*args):
         if conf.model.save_model:
             save_model(conf.model, model, optimizer, dir_name="epoch_final")
 
+
 def main():
-    dataset_train=prep_dataset(conf,mode='train') # 由于是单机，所以数据只用加载一次
-    dataset_dev=prep_dataset(conf,mode='dev')
-    conf.ngpus=len(paddle.static.cuda_places()) if conf.ngpus ==-1 else conf.ngpus
-    dist.spawn(main_worker,args=(dataset_train,dataset_dev,),nprocs=conf.ngpus) # 启动多个进程
+    dataset_train = prep_dataset(conf, mode='train')  # 由于是单机，所以数据只用加载一次
+    dataset_dev = prep_dataset(conf, mode='dev')
+    conf.ngpus = len(paddle.static.cuda_places()) if conf.ngpus == -1 else conf.ngpus
+    dist.spawn(main_worker, args=(dataset_train, dataset_dev,), nprocs=conf.ngpus)  # 启动多个进程
+
 
 if __name__ == "__main__":
     main()
