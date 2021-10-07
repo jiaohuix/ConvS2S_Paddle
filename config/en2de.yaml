@@ -24,8 +24,7 @@ model:
   model_name: convs2s_wmt_en_de
   dropout: 0.2
   # Path of trained parameter, to make prediction
-  init_from_params: "ckpt/epoch_110"
-#  init_from_params: ""
+  init_from_params: "ckpt/epoch_100"
   # The directory for saving models
   save_model: "ckpt"
   # These following five vocabularies related configurations will be set
@@ -74,7 +73,7 @@ train:
   use_gpu: True
   num_workers: 1
   # The number of epoches for training
-  max_epoch: 110
+  max_epoch: 200
   avg_steps: 5050
   auto_cast: True
   fp16_init_scale: 128
@@ -83,14 +82,14 @@ train:
   accumulate_batchs: 4
   # Args for reader, see reader.py for details
   batch_size: 16
-  log_step: 200
+  log_step: 400
   # max tokens per batch, eg: 2k 4k 6k (12g,24g,32g  use amp)
-  max_tokens: 8000
+  max_tokens: 7000
   # max batchsize         eg: 64 128 192,should match max_tokens
-  max_sentences: 64
-  batch_size_factor: 4
+  max_sentences: 256
+  batch_size_factor: 8
   # The frequency to save trained models when training.
-  save_epoch: 1
+  save_epoch: 10
   stop_patience: -1
   last_epoch: 0
 
@@ -98,11 +97,15 @@ train:
 generate:
   infer_batch_size: 128
   infer_max_tokens: 4000
+  infer_max_sentences: 1
   # The parameters for beam search.
   beam_size: 5
-  max_out_len: 256
   # The number of decoded sentences to output.
   n_best: 1
+  max_out_len: 0
+  # max_out_len is relative length to src_len
+  rel_len: True
+  alpha: 0.6
 
 ngpus: -1
 eval: False
