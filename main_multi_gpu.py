@@ -4,15 +4,14 @@ import paddle
 import argparse
 import logging
 import sys
+import math
 from data import prep_dataset, prep_loader
 from tqdm import tqdm
 from eval import eval_model
-from utils import same_seeds, get_config, calc_ppl, save_model, ReduceOnPlateauWithAnnael
+from utils import same_seeds, get_config, calc_ppl, save_model, ReduceOnPlateauWithAnnael,ConvS2SMetric
 from models import build_model
 import paddle.distributed as dist
 from paddlenlp.transformers import CrossEntropyCriterion
-
-# python main_multi_gpu_orig.py --config config/en2ro.yaml --last_epoch 60 --resume ckpt_ro/epoch_60
 
 parser = argparse.ArgumentParser(description='ConvS2S', add_help=True)
 parser.add_argument('-c', '--config', default='config/base.yaml', type=str, metavar='FILE', help='yaml file path')
@@ -58,8 +57,8 @@ def validation(dataloader, model, criterion):
             total_nll_loss += nll_loss
             total_tokens += token_num
 
-        avg_smooth_loss = float(total_smooth_loss / total_tokens)
-        avg_nll_loss = min(float(total_nll_loss / total_tokens), 100.)
+        avg_smooth_loss = float(total_smooth_loss / total_tokens) /math.log(2)
+        avg_nll_loss = min(float(total_nll_loss / total_tokens), 100.) /math.log(2)
         avg_ppl = pow(2, avg_nll_loss)
 
         logger.info(
@@ -77,6 +76,7 @@ def train_one_epoch(dataloader,
                     scaler,
                     epoch,
                     step,
+                    metric=None,
                     debug_steps=100,
                     accum_iter=1):
     """Training for one epoch
@@ -102,7 +102,7 @@ def train_one_epoch(dataloader,
         (src_tokens, tgt_tokens, lbl_tokens) = input_data
         sentences += src_tokens.shape[0]
         # 创建AMP上下文环境，开启自动混合精度训练
-        with paddle.amp.auto_cast(enable=conf.train.auto_cast):
+        with paddle.amp.auto_cast(enable=True):
             logits = model(src_tokens=src_tokens, prev_output_tokens=tgt_tokens)[0]
             sum_cost, avg_cost, token_num = criterion(logits, lbl_tokens)
 
@@ -115,11 +115,14 @@ def train_one_epoch(dataloader,
             # 训练模型
             scaler.minimize(optimizer, scaled)
             optimizer.clear_grad()
+        loss_, nll_loss_, ppl_ = metric.update(sum_cost, logits, target=lbl_tokens, sample_size=token_num,pad_id=conf.model.pad_idx)
+
         # log
         if (batch_id + 1) % debug_steps == 0:
             avg_bsz = sentences / (batch_id + 1)
             avg_total_steps = len(dataloader.dataset) // avg_bsz // dist.get_world_size()
-            nll_loss, ppl = calc_ppl(logits, lbl_tokens, token_num, conf.model.pad_idx)
+            # nll_loss, ppl = calc_ppl(logits, lbl_tokens, token_num, conf.model.pad_idx)
+            avg_cost, nll_loss, ppl = metric.accumulate()  # 返回累积batch的平均指标
 
             logger.info(
                 f"Train rank:[{dist.get_rank()}] | Epoch: [{epoch}/{conf.train.max_epoch}] | Step: [{batch_id+1}/{avg_total_steps}] | Avg bsz:{avg_bsz:.1f} "
@@ -150,6 +153,8 @@ def main_worker(*args):
     model = paddle.DataParallel(model)
     # 3. Define criterion
     criterion = CrossEntropyCriterion(conf.learning_strategy.label_smooth_eps, pad_idx=conf.model.pad_idx)
+    metric = ConvS2SMetric()
+
     # 4. Define optimizer and lr_scheduler
     scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
                                           patience=conf.learning_strategy.patience,
@@ -168,12 +173,15 @@ def main_worker(*args):
     if conf.model.resume:
         model_path = os.path.join(conf.model.resume, 'convs2s.pdparams')
         optim_path = os.path.join(conf.model.resume, 'convs2s.pdopt')
-        assert os.path.isfile(model_path) is True
-        assert os.path.isfile(optim_path) is True
-        model_state = paddle.load(model_path)
-        model.set_dict(model_state)
-        opt_state = paddle.load(optim_path)
-        optimizer.set_state_dict(opt_state)
+        if os.path.isfile(model_path):
+            model_state = paddle.load(model_path)
+            model.set_dict(model_state)
+        if os.path.isfile(optim_path):
+            optim_state = paddle.load(optim_path)
+            if conf.learning_strategy.reset_lr:
+                optim_state['LR_Scheduler']['last_lr'] = conf.learning_strategy.learning_rate
+                optim_state['LR_Scheduler']['best'] = 100.
+            optimizer.set_state_dict(optim_state)
         logger.info(
             f"----- Resume Training: Load model and optmizer states from {conf.model.resume}")
 
@@ -202,9 +210,11 @@ def main_worker(*args):
             scaler=scaler,
             epoch=epoch,
             step=step,
+            metric=metric,
             debug_steps=conf.train.log_step,
             accum_iter=conf.train.accumulate_batchs)
 
+        metric.reset()
         # evaluate model on valid data after one epoch
         val_loss, val_nll_loss, val_ppl = validation(dev_loader, model, criterion)
 
