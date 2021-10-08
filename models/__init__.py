@@ -19,5 +19,7 @@ def build_model(conf,is_test=False):
                                         max_tgt_positions=model_args.max_length,
                                         dropout=model_args.dropout,
                                         beam_size=gen_args.beam_size,
-                                        max_out_len=gen_args.max_out_len)
+                                        max_out_len=gen_args.max_out_len,
+                                        rel_len=gen_args.rel_len,
+                                        alpha=gen_args.alpha)
     return model
