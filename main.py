@@ -26,23 +26,23 @@ def main(args):
         logger.info('Prep | Loading models...')
         model = build_model(conf, is_test=False)
         logger.info('Train | Training...')
-        train_model(conf,model,train_loader,train_loader)
+        train_model(conf,model,train_loader,dev_loader)
 
     elif args.mode=='pred':
         test_dset=prep_dataset(conf,mode='test')
-        test_loader,test_sampler, to_tokens = prep_loader(conf,test_dset, mode='test')
+        test_loader, to_tokens = prep_loader(conf,test_dset, mode='test')
         logger.info('Prep | Loading models...')
         model = build_model(conf, is_test=True)
 
         logger.info('Pred | Predicting...')
-        predict(conf,model,test_loader,test_sampler,to_tokens)
+        predict(conf,model,test_loader,to_tokens=to_tokens)
 
     else:
         logger.info('Mode error!')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Paddle Model Training', add_help=True)
-    parser.add_argument('-c', '--config', default='config/en2de.yaml', type=str, metavar='FILE', help='yaml file path')
+    parser.add_argument('-c', '--config', default='config/en2ro.yaml', type=str, metavar='FILE', help='yaml file path')
     parser.add_argument('-m', '--mode', default='pred', type=str, choices=['train', 'pred'])
     args = parser.parse_args()
     main(args)
