@@ -42,7 +42,7 @@ def predict(conf,model,test_loader,test_sampler,to_tokens):
                     f.write(sequence) # 若nbest>1,岂不是同一句要写好几行？
 
                 pred_indices.append(src_indices[idx])
-            break # 生成1batch
+            #break # 生成1batch
     f.close()
 
     # 读取tgt文本
