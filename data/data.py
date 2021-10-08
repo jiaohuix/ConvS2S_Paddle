@@ -142,7 +142,7 @@ def prep_loader(conf, dataset, mode='train', multi_process=False):
         dataset = dataset.map(trans_fn, lazy=False) \
             .filter(partial(min_max_filer, max_len=model_args.max_length))
 
-        batchify_fn = partial(batchify_train_dev, bos_idx=model_args.eos_idx, eos_idx=model_args.eos_idx,
+        batchify_fn = partial(batchify_train_dev, bos_idx=model_args.bos_idx, eos_idx=model_args.eos_idx,
                               pad_idx=model_args.pad_idx)
     else:
         dataset = dataset.map(trans_fn, lazy=False)
@@ -180,7 +180,7 @@ def prep_loader(conf, dataset, mode='train', multi_process=False):
                                                          max_sentences=eval(str(max_sentences)),
                                                          bsz_factor=train_args.batch_size_factor, num_replicas=1,
                                                          rank=0, drop_last=False)
-    if conf.model.resume:
+    if conf.model.resume and mode='train':
         batch_sampler.set_epoch(conf.train.last_epoch)
         print(f"----- Resume Training: set sampler's epoch to {conf.train.last_epoch} as a random seed")
 
