@@ -21,7 +21,7 @@ backtranslation数据：http://data.statmt.org/rsennrich/wmt16_backtranslations/
 
 ![convs2s](./imgs/convs2s.png)
 
-- **整体结构：**ConvS2S是经典的encoder、decoder的结构，分别堆叠了多层卷积块。上图中上面的是encoder的结构（嵌入和一个卷积块），最下面是decoder的结构，中间的矩形代表decoder的某层与encoder的输出进行多步注意力，具体为：
+- **整体结构：** ConvS2S是经典的encoder、decoder的结构，分别堆叠了多层卷积块。上图中上面的是encoder的结构（嵌入和一个卷积块），最下面是decoder的结构，中间的矩形代表decoder的某层与encoder的输出进行多步注意力，具体为：
   - embed：encoder、decoder分别有个嵌入层，包含词嵌入和位置嵌入，分别得到w和p，将两者相加得到嵌入表示e。
   - conv block：encoder、decoder的卷积块结构相同，基本上都是核为3的一维卷积，通道为输入通道数d的两倍2d，并使用门控线性函数（GLU）将一半通道的输出作为门控，从另一半中抽取需要的时序信息，最终还是得到d维的通道。除此之外，末尾几层通道数会变大，与上一层输出作残差连接时需要用线性层把输入e扩展到相应通道数。
   - multi step attention: 多步注意力即decoder每层输出hi都和encoder输出z做注意力计算，然后用注意力权重抽取encoder的z+e的信息，得到上下文向量c，与当前decoder层的输出hi相加得到hi+c，或者作为decoder下一层输入，或者用proj得到batch*vocab_size的logits，用以表示输出的词
