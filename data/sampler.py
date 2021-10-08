@@ -406,6 +406,7 @@ class DistributedDynamicBatchSampler(BatchSampler):
             batches_indices.append(residual_batch)
         all_len=len(list(chain(*batches_indices)))
         # print(f'last sample len:{all_len} | raw:{len(self.data_source)}')
+        # 按照rank对batches_indices采样
         if self.nranks>1:
             local_batches_indices=[]
             last_batches=len(batches_indices)%self.nranks # 多余的batch
@@ -421,9 +422,4 @@ class DistributedDynamicBatchSampler(BatchSampler):
         # single process
         return batches_indices
 
-'''
-明日：
-1.处理last
-2.indices不用补全
-3.sentence
-'''
+
