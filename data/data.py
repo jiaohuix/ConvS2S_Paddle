@@ -3,8 +3,8 @@ import numpy as np
 from functools import partial
 import paddle
 import paddle.distributed as dist
-from .sampler import DynamicBatchSampler,DynamicTestSampler,DistributedDynamicBatchSampler
-
+from .sampler import DynamicBatchSampler, DynamicTestSampler, DistributedDynamicBatchSampler
+from .sampler_v2 import DistributedDynamicBatchSamplerV2
 from paddle.io import DataLoader, BatchSampler
 from paddlenlp.data import Vocab, Pad
 from paddlenlp.datasets import load_dataset
@@ -33,9 +33,9 @@ class SentsLenDataset(paddle.io.Dataset):
     ''' 返回src、tgt句子最大长度的dataset，用于sampler动态采样 '''
 
     def __init__(self, dataset):
-        if len(dataset[0])==2:
-            self.sents_max_len = [max(len(data[0]), len(data[1])) for data in dataset]
-        elif len(dataset[0])==1:
+        if len(dataset[0]) == 2:
+            self.sents_max_len = [max(len(data[0]), len(data[1])) for data in dataset]  # 得+1
+        elif len(dataset[0]) == 1:
             self.sents_max_len = [len(data) for data in dataset]
 
     def __getitem__(self, idx):
@@ -46,7 +46,7 @@ class SentsLenDataset(paddle.io.Dataset):
 
 
 def prep_dataset(conf, mode='train'):
-    data_args=conf.data
+    data_args = conf.data
     assert mode in ['train', 'dev', 'test']
     if mode == 'train':
         dataset = load_dataset(read, src_path=data_args.training_file.split(',')[0],
@@ -55,13 +55,13 @@ def prep_dataset(conf, mode='train'):
         dataset = load_dataset(read, src_path=data_args.validation_file.split(',')[0],
                                tgt_path=data_args.validation_file.split(',')[1], lazy=False)
     else:
-        file=data_args.predict_file.split(',')[0]
-        dataset = load_dataset(read, src_path=data_args.predict_file.split(',')[0], tgt_path=None, is_predict=True, lazy=False)
+        dataset = load_dataset(read, src_path=data_args.predict_file.split(',')[0], tgt_path=None, is_predict=True,
+                               lazy=False)
     return dataset
 
 
 def prep_vocab(conf):
-    data_args=conf.data
+    data_args = conf.data
     src_vocab = Vocab.load_vocabulary(
         data_args.src_vocab_fpath,
         bos_token=data_args.special_token[0],
@@ -81,7 +81,7 @@ def prep_vocab(conf):
         padding_vocab = (
             lambda x: (x + data_args.pad_factor - 1) // data_args.pad_factor * data_args.pad_factor
         )
-        conf['model']['src_vocab_size'] = padding_vocab(len(src_vocab)) # 要修改attrdict必须用中括号
+        conf['model']['src_vocab_size'] = padding_vocab(len(src_vocab))  # 要修改attrdict必须用中括号
         conf['model']['tgt_vocab_size'] = padding_vocab(len(tgt_vocab))
     else:
         conf['model']['src_vocab_size'] = len(src_vocab)
@@ -131,42 +131,65 @@ def batchify_infer(insts, eos_idx, pad_idx):
     return src_word
 
 
-def prep_loader(conf,dataset, mode='train', multi_process=False):
+def prep_loader(conf, dataset, mode='train', multi_process=False):
     assert mode in ['train', 'dev', 'test']
-    data_args,model_args,strategy_args,train_args,gen_args=conf.data,conf.model,conf.learning_strategy,conf.train,conf.generate
+    data_args, model_args, strategy_args, train_args, gen_args = conf.data, conf.model, conf.learning_strategy, conf.train, conf.generate
     # load vocab
     src_vocab, tgt_vocab = prep_vocab(conf)
     # dataset
-    trans_fn=partial(convert_samples,src_vocab=src_vocab,tgt_vocab=tgt_vocab)
+    trans_fn = partial(convert_samples, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
     if mode != 'test':
-        dataset = dataset.map(trans_fn, lazy=False)\
-                         .filter(partial(min_max_filer,max_len=model_args.max_length))
+        dataset = dataset.map(trans_fn, lazy=False) \
+            .filter(partial(min_max_filer, max_len=model_args.max_length))
 
-        batchify_fn = partial(batchify_train_dev, bos_idx=model_args.eos_idx, eos_idx=model_args.eos_idx, pad_idx=model_args.pad_idx)
+        batchify_fn = partial(batchify_train_dev, bos_idx=model_args.eos_idx, eos_idx=model_args.eos_idx,
+                              pad_idx=model_args.pad_idx)
     else:
         dataset = dataset.map(trans_fn, lazy=False)
         batchify_fn = partial(batchify_infer, eos_idx=model_args.eos_idx, pad_idx=model_args.pad_idx)
 
     # sampler
-    sents_maxlen_dset = SentsLenDataset(dataset)  # dataset对应的最大句长
-    if multi_process==True:
-        batch_sampler=DistributedDynamicBatchSampler(data_source=sents_maxlen_dset,shuffle=(mode=='train'),num_buckets=model_args.max_length,
-                                                     min_size=model_args.min_length,max_size=model_args.max_length,max_tokens=train_args.max_tokens,
-                                                     bsz_factor=train_args.batch_size_factor) # max_sentences=train_args.max_sentences
+    # sents_maxlen_dset = SentsLenDataset(dataset)  # dataset对应的最大句长
+    # if multi_process == True:
+    #     batch_sampler = DistributedDynamicBatchSampler(data_source=sents_maxlen_dset, shuffle=(mode == 'train'),
+    #                                                    num_buckets=model_args.max_length,
+    #                                                    min_size=model_args.min_length, max_size=model_args.max_length,
+    #                                                    max_tokens=train_args.max_tokens,
+    #                                                    bsz_factor=train_args.batch_size_factor)  # max_sentences=train_args.max_sentences
+    # else:
+    #     if mode == 'test':
+    #         batch_sampler = DynamicTestSampler(data_source=sents_maxlen_dset, max_tokens=gen_args.infer_max_tokens)
+    #     else:
+    #         batch_sampler = DistributedDynamicBatchSampler(data_source=sents_maxlen_dset, shuffle=(mode == 'train'),
+    #                                                        num_buckets=model_args.max_length,
+    #                                                        min_size=model_args.min_length,
+    #                                                        max_size=model_args.max_length,
+    #                                                        max_tokens=train_args.max_tokens,
+    #                                                        bsz_factor=train_args.batch_size_factor, num_replicas=1,
+    #                                                        rank=0)  # ,max_sentences=train_args.max_sentences
+
+    # samplerv2
+    max_tokens=train_args.max_tokens if mode!='test' else gen_args.infer_max_tokens
+    max_sentences=train_args.max_sentences if mode!='train' else gen_args.infer_max_sentences
+    if multi_process == True:
+        batch_sampler = DistributedDynamicBatchSamplerV2(dataset, mode=mode, max_tokens=max_tokens,
+                                                         max_sentences=eval(str(max_sentences)),
+                                                         bsz_factor=train_args.batch_size_factor, drop_last=False)
     else:
-        if mode=='test':
-            batch_sampler = DynamicTestSampler(data_source=sents_maxlen_dset, max_tokens=gen_args.infer_max_tokens)
-        else:
-            batch_sampler = DistributedDynamicBatchSampler(data_source=sents_maxlen_dset,shuffle=(mode == 'train'),num_buckets=model_args.max_length,
-                                                           min_size=model_args.min_length,max_size=model_args.max_length,max_tokens=train_args.max_tokens,
-                                                           bsz_factor=train_args.batch_size_factor,num_replicas=1,rank=0) #,max_sentences=train_args.max_sentences
+        batch_sampler = DistributedDynamicBatchSamplerV2(dataset, mode=mode, max_tokens=max_tokens,
+                                                         max_sentences=eval(str(max_sentences)),
+                                                         bsz_factor=train_args.batch_size_factor, num_replicas=1,
+                                                         rank=0, drop_last=False)
+    if conf.model.resume:
+        batch_sampler.set_epoch(conf.train.last_epoch)
+        print(f"----- Resume Training: set sampler's epoch to {conf.train.last_epoch} as a random seed")
+
     # dataloader
     dataloader = DataLoader(
         dataset=dataset,
         batch_sampler=batch_sampler,
         collate_fn=batchify_fn,
         num_workers=train_args.num_workers,
-        )
+    )
 
-    return dataloader if mode!='test' else (dataloader,batch_sampler,tgt_vocab.to_tokens)
-
+    return dataloader if mode != 'test' else (dataloader, tgt_vocab.to_tokens)
