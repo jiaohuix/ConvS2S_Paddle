@@ -25,8 +25,8 @@ class DistributedDynamicBatchSamplerV2(BatchSampler):
         self.dataset = dataset
         assert mode in ['train', 'dev', 'test']
         self.shuffle = mode == 'train'
-        self.src_sizes = np.array([len(data[0]) for data in dataset])
-        self.tgt_sizes = np.array([len(data[1]) for data in dataset]) if mode != 'test' else None
+        self.src_sizes = np.array([len(data[0])+1 for data in dataset])
+        self.tgt_sizes = np.array([len(data[1])+1 for data in dataset]) if mode != 'test' else None
         # self.num_tokens_fn = lambda idx:self.dataset[idx]+1 # 长度dset,一定要加eos或sos！！
         assert max_tokens is not None or max_sentences is not None, \
             "max_tokens and max_sentences should not be null at the same time, please specify one parameter at least"
