@@ -170,7 +170,7 @@ def prep_loader(conf, dataset, mode='train', multi_process=False):
 
     # samplerv2
     max_tokens=train_args.max_tokens if mode!='test' else gen_args.infer_max_tokens
-    max_sentences=train_args.max_sentences if mode!='train' else gen_args.infer_max_sentences
+    max_sentences=train_args.max_sentences if mode!='test' else gen_args.infer_max_sentences
     if multi_process == True:
         batch_sampler = DistributedDynamicBatchSamplerV2(dataset, mode=mode, max_tokens=max_tokens,
                                                          max_sentences=eval(str(max_sentences)),
