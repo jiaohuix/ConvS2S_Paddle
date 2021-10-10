@@ -58,12 +58,14 @@ class DistributedDynamicBatchSamplerV2(BatchSampler):
         # get indices and shuffle samples
         indices = ordered_indices(src_sizes=self.src_sizes, tgt_sizes=self.tgt_sizes, epoch=self.epoch,
                                   shuffle=self.shuffle)
-        if self.shuffle:
-            self.epoch += 1
+
 
         # subsample for rank
         batches_indices = self._get_batches_by_max_tokens(indices)
 
+        if self.shuffle:
+           self.epoch += 1
+            
         # yield batch indices
         _batch_iter = iter(batches_indices)
         for batch_indices in _batch_iter:
