@@ -84,6 +84,7 @@ class LinearizedConvolutionV1(ConvTBC):
             return weight.reshape((-1, self.out_channels))
         return self._linearized_weight
 
+
 class LinearizedConvolution(ConvNLC):
     """An optimized version of nn.Conv1d.
 
@@ -110,7 +111,7 @@ class LinearizedConvolution(ConvNLC):
         """
         assert cache is None or isinstance(cache,self.Cache),'cache must be none or instance of Cache'
         if cache is None:
-            output = self.conv_tbc(input)
+            output = self.conv_nlc(input)
             if self.kernel_size[0] > 1 and self.padding[0] > 0:
                 # remove future timesteps added by padding
                 # output = output[: -self.padding[0], :, :] #tbc
@@ -155,3 +156,18 @@ class LinearizedConvolution(ConvNLC):
             # return weight.reshape((self.out_channels,-1))
             return weight.reshape((-1, self.out_channels))
         return self._linearized_weight
+
+    # def _get_linearized_weight(self): # 这里待会必须研究！
+    #     if self._linearized_weight is None:
+    #         kw = self.kernel_size[0]
+    #         # [k in out]->[k*in out] conv_tbc
+    #         # weight = self.weight.transpose(2, 1).transpose(1, 0).contiguous()
+    #         # [out in k]->[k*in out] conv1d
+    #         # [out in k]->[in * k ,out] conv1d
+    #         weight = self.weight.transpose((1,2,0))
+    #         # assert weight.shape == [self.out_channels, kw, self.in_channels] # 1
+    #         # assert weight.shape == [kw, self.in_channels,self.out_channels] # 2
+    #         assert weight.shape == [ self.in_channels,kw,self.out_channels] # 3
+    #         # return weight.reshape((self.out_channels,-1))
+    #         return weight.reshape((-1, self.out_channels))
+    #     return self._linearized_weight

@@ -3,7 +3,7 @@ import numpy as np
 import paddle
 from models import convs2s_wmt_en_de
 path='ckpt/checkpoint_last.pt'
-out=np.load('fconv_dec.npy',allow_pickle=True)[0]
+# out=np.load('fconv_dec.npy',allow_pickle=True)[0]
 # 1.1获取torch权重和键值
 torch_weights = torch.load(path)['model']
 torch_keys=[k for k in torch_weights.keys()]
@@ -17,7 +17,9 @@ model=convs2s_wmt_en_de(is_test=False,
                      bos_id=2,
                      eos_id=2,
                     beam_size=5,
-                    max_out_len=50 )
+                    max_out_len=50,
+                    rel_len=True,
+                        alpha=0.6)
 paddle_keys=[k for k in model.state_dict().keys()]
 paddle_weights=model.state_dict()
 
@@ -32,6 +34,27 @@ print(torch_weights['encoder.fc2.weight_v'].shape)
 # print('optimizer',torch_weights['optimizer'])
 # print('best_loss',torch_weights['best_loss']) # None
 # print('args',torch_weights['args'])
+
+# # 打印
+print('torch keys')
+# 打印torch参数名和shape
+for k, v in torch_weights.items():  # 可以轻易找到对应key
+    print(k, list(v.shape))
+
+print('paddle keys')
+# 打印参数名字和对应的shape
+for k, v in paddle_weights.items():
+    print(k, v.shape)
+
+
+# torch key转换规则
+torch_to_paddle_keys={}
+skip_weights = ["decoder.version"]
+
+# 关注维度是2的
+donot_transpose=[
+    "encoder.embed_tokens.weight",'encoder.embed_positions.weight','decoder.embed_tokens.weight','decoder.embed_positions.weight']
+
 '''
 Namespace(arch='fconv_wmt_en_de', clip_norm=0.1, data='/private/home/edunov/wmt14_en_de', decoder_attention='True', 
 decoder_embed_dim=768, decoder_layers='[(512, 3)] * 9 + [(1024, 3)] * 4 + [(2048, 1)] * 2', decoder_out_embed_dim=512, dropout=0.1, 
@@ -82,8 +105,39 @@ def weight_info(keys, weights):
         print(f'{i} | name: {key} | shape: {weights[key].shape} \n')
     print(f'total:len {len(keys)}')
 
-weight_info(torch_keys,torch_weights)
-weight_info(paddle_keys,paddle_weights)
+# weight_info(torch_keys,torch_weights)
+# weight_info(paddle_keys,paddle_weights)
+
+for i,(tk, tw) in enumerate(torch_weights.items()):
+    transpose = False  # 仅做打印
+    # 跳过不需要的w
+    if tk in skip_weights:
+        continue
+    # 转置linear的weight
+    if tk.find('.weight') != -1: # 单独weight的只有embed
+        if tk not in donot_transpose:
+            tail=tk.split('.')[-1]
+            if tail=='weight_g':
+                tw=tw.squeeze()
+            elif tail=='weight_v':
+                if tw.ndim == 2:
+                    tw = tw.transpose(0, 1)
+                    transpose = True
+                elif tw.ndim==3:
+                    tw = tw.permute(2,1,0)
+                    transpose = True
+            else:
+                print('w err')
+
+    # 转换key名
+    pk = tk
+    for k, v in torch_to_paddle_keys.items():
+        pk = pk.replace(k, v)
+    print(f"[{i}/{len(torch_weights)}]Converting: {tk} => {pk} | is_transpose {transpose}")
+    paddle_weights[pk] = tw.cpu().detach().numpy()
+paddle.save(paddle_weights, 'convs2s.pdparams')
+print('save over')
+
 
 # 打印不一样的
 def check_different(ls1,ls2): #torch和paddle的keys
@@ -198,26 +252,26 @@ def align(torch_weights, paddle_weights):
             print(f'key not alligned:{pk}')
     return paddle_weights
 
-pad_weights=align(torch_weights,paddle_weights)
-print(pad_weights)
+# pad_weights=align(torch_weights,paddle_weights)
+# print(pad_weights)
 # paddle.save(pad_weights, 'ckpt/last/new_align.pdparams')
 
-for pk in paddle_keys:
-    if pk in torch_keys:
-        if pk.find('weight_g') != -1:
-            torch_w=torch_weights[pk].squeeze().cpu().detach().numpy()
-        else:
-            torch_w=torch_weights[pk].cpu().detach().numpy()
-        if paddle_weights[pk].shape==list(torch_w.shape):
-            paddle_weights[pk]=torch_w
-        # elif pk.find('weight_g')!=-1:
-        #     paddle_weights[pk] = torch_weights[pk].squeeze().cpu().detach().numpy()
-        elif pk.find('weight_v')!=-1 and len(torch_w.shape)==3: # conv #可以合并trans
-            paddle_weights[pk]=torch_w.transpose(2,1,0)
-        elif pk.find('weight_v')!=-1 and len(torch_w.shape)==2: # fc,attn,proj
-            paddle_weights[pk] = torch_w.transpose(1,0)
-    else:
-        print(f'key not alligned:{pk}')
+# for pk in paddle_keys:
+#     if pk in torch_keys:
+#         if pk.find('weight_g') != -1:
+#             torch_w=torch_weights[pk].squeeze().cpu().detach().numpy()
+#         else:
+#             torch_w=torch_weights[pk].cpu().detach().numpy()
+#         if paddle_weights[pk].shape==list(torch_w.shape):
+#             paddle_weights[pk]=torch_w
+#         # elif pk.find('weight_g')!=-1:
+#         #     paddle_weights[pk] = torch_weights[pk].squeeze().cpu().detach().numpy()
+#         elif pk.find('weight_v')!=-1 and len(torch_w.shape)==3: # conv #可以合并trans
+#             paddle_weights[pk]=torch_w.transpose(2,1,0)
+#         elif pk.find('weight_v')!=-1 and len(torch_w.shape)==2: # fc,attn,proj
+#             paddle_weights[pk] = torch_w.transpose(1,0)
+#     else:
+#         print(f'key not alligned:{pk}')
 # 转换成paddle权重
 # paddle.save(paddle_weights,'./ckpt/convs2s_last.padparams')
 
@@ -243,19 +297,19 @@ def allign2torch(torch_weights,paddle_weights):
             elif tk.find('weight_v')!=-1 and len(paddle_w.shape)==2:
                 torch_weights[tk] = torch.from_numpy(paddle_w.transpose(1, 0))
         else:
-            print(f'key not alligned:{pk}')
+            print(f'key not alligned:{tk}')
     print('aligned over!')
     return torch_weights
 
 # 转换成torch权重
-t_path='ckpt/checkpoint_last.pt'
-p_path='ckpt/epoch_80/convs2s.pdparams'
+t_path='ckpt_ro/checkpoint_last.pt'
+p_path='ckpt_ro/epoch_100/convs2s.pdparams'
 torch_weights = torch.load(t_path)
 paddle_weights=paddle.load(p_path)
 
 tmodel_weights=allign2torch(torch_weights['model'],paddle_weights)
 torch_weights['model']=tmodel_weights
-torch.save(torch_weights,'ckpt/checkpoint_80.pt')
+torch.save(torch_weights,'ckpt_ro/checkpoint_enro100.pt')
 
 
 # state=paddle.load('./ckpt/convs2s_last.padparams')

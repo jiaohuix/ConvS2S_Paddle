@@ -1,0 +1,107 @@
+seed: 1
+eval: False
+SAVE: output # save dir for model、log、generated text
+
+# Hyparams for dataset:
+data:
+  src_lang: "en"
+  tgt_lang: "de"
+  # The prefix pattern to match train、valid、test  files.
+  train_pref: "wmt14_en_de/train"
+  valid_pref: "wmt14_en_de/valid"
+  test_pref: "wmt14_en_de/test"
+  # The prefix pattern to match vocabulary.
+  vocab_pref: "wmt14_en_de/vocab"
+  # The <bos>, <eos> and <unk> tokens in the dictionary.
+  special_token: ["<s>","<pad>","</s>","<unk>"]
+  # Used to pad vocab size to be multiple of pad_factor.
+  pad_vocab: True
+  pad_factor: 8
+  has_target: True
+
+
+# Hyparams for models:
+model:
+  # convs2s models name,choices: convs2s_iwslt_de_en/convs2s_wmt_en_ro/convs2s_wmt_en_de/convs2s_wmt_en_fr
+  model_name: convs2s_wmt_en_de
+  dropout: 0.2
+  # Path of trained parameter, to make prediction
+  init_from_params: ""
+  # The directory for saving models
+  save_model: "ckpt"
+  # Size of source、target word dictionary（automatically updated after 'prep_vocab'）.
+  src_vocab_size: None
+  tgt_vocab_size: None
+  # Index for <bos>,<pad>,<eos>,<unk> token
+  bos_idx: 0
+  pad_idx: 1
+  eos_idx: 2
+  unk_idx: 3
+  # Max length of sequences deciding the size of position encoding table.
+  min_length: 0
+  max_length: 1024
+
+
+# The hyper parameters for  optimizer.
+# This static learning_rate will be applied to the LearningRateScheduler
+# derived learning rate the to get the final learning rate.
+learning_strategy:
+  use_nesterov: True
+  momentum: 0.99
+  weight_decay: 0.0
+  clip_norm: 0.1
+  # The parameters for learning rate scheduling."Reduce the learning rate by an order of magnitude after each epoch until it falls below 10−4"
+  learning_rate: 0.5
+  reset_lr: True
+  min_lr: 0.0001 # early stop
+  lr_shrink: 0.5
+  patience: 1
+  force_anneal: 50 # annneal based on lr_shrink
+  # The weight used to mix up the ground-truth distribution and the fixed
+  # uniform distribution in label smoothing when training.
+  # Set this as zero if label smoothing is not wanted.
+  label_smooth_eps: 0.1
+
+
+# Hyparams for training:
+train:
+  # Whether to use cuda
+  use_gpu: False
+  num_workers: 1
+  # The number of epoches for training
+  max_epoch: 200
+  resume: ""
+  last_epoch: 0 # default 0 to train from scratch
+  # The frequency to save trained models when training.
+  save_epoch: 10
+  stop_patience: -1
+  amp: False
+  fp16_init_scale: 128
+  amp_scale_window: False
+  growth_interval: 128
+  accum_iter: 1
+  # Args for reader, see reader.py for details
+  log_steps: 400
+  # max tokens per batch, eg: 2k 4k 6k (12g,24g,32g  use amp)
+  max_tokens: 4000
+  # max batchsize         eg: 64 128 192,should match max_tokens
+  max_sentences: None
+  batch_size_factor: 8
+  report_bleu: True
+
+
+# Hyparams for generation:
+generate:
+  max_tokens: 4000
+  max_sentences: None
+  # The parameters for beam search.
+  beam_size: 5
+  # The number of decoded sentences to output.
+  n_best: 1
+  max_out_len: 200
+  # max_out_len is relative length to src_len
+  alpha: 0.6
+  rel_len: True
+  # The file to output the translation results of predict_file to.
+  generate_path: "generate.txt"
+  sorted_path: "result.txt"

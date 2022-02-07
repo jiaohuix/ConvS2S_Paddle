@@ -49,11 +49,12 @@ class LearnedPositionalEmbedding(nn.Embedding):
                 positions=positions.astype(paddle.int64)
             else: # 正常嵌入
                 positions = utils.make_positions(input, self._padding_idx)
+
         return F.embedding(
             positions,
             self.weight,
-            self._padding_idx,
-            self._sparse
+            # padding_idx=self._padding_idx,
+            sparse=self._sparse
             # 下面是torch的，用的是默认设置max_norm=None，在这个情况下和paddle一致
             # self.max_norm, # None
             # self.norm_type, #2

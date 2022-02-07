@@ -4,6 +4,7 @@ from .base_encoder import PaddleEncoder
 from .base_decoder import PaddleDecoder
 from .convs2s import ConvS2SEncoder,ConvS2SDecoder,AttentionLayer,ConvS2SModel
 from .convs2s import convs2s_iwslt_de_en,convs2s_wmt_en_ro,convs2s_wmt_en_de,convs2s_wmt_en_fr
+from .beam_search import SequenceGenerator
 import models
 
 def build_model(conf,is_test=False):

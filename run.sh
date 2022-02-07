@@ -1,0 +1,1 @@
+python main_multi_gpu.py --ngpus 4 --config configs/en2ro.yaml --last_epoch 100 --resume ckpt/epoch_100

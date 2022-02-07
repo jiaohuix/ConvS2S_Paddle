@@ -1,1 +1,0 @@
-from .label_smooth_ce import LabelSmoothedCrossEntropyCriterion

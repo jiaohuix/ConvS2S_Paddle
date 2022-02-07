@@ -2,7 +2,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
 import paddle
 import logging
 import numpy as np
@@ -20,7 +19,6 @@ from paddle.fluid.layers.utils import map_structure
 logger = logging.getLogger("ConvS2S")
 normal_ = Normal(0, 0.1)
 zeros_ = Constant(value=0.)
-
 
 class ConvS2SModel(nn.Layer):
     """
@@ -53,9 +51,10 @@ class ConvS2SModel(nn.Layer):
                  dropout=0.1,
                  decoder_attention=True,
                  share_embed=False,
-                 pad_id=1,
                  bos_id=0,
+                 pad_id=1,
                  eos_id=2,
+                 unk_id=3,
                  ):
         super().__init__()
 
@@ -86,6 +85,7 @@ class ConvS2SModel(nn.Layer):
         self.pad_id = pad_id
         self.bos_id = bos_id
         self.eos_id = eos_id
+        self.unk_id = unk_id
         self.encoder.num_attention_layers = sum(layer is not None for layer in self.decoder.attention)
 
     def forward(self, src_tokens, prev_output_tokens, **kwargs):
@@ -116,8 +116,11 @@ class ConvS2SModel(nn.Layer):
         )
         return decoder_out
 
-    def forward_decoder(self, prev_output_tokens, **kwargs):
-        return self.decoder(prev_output_tokens, **kwargs)
+    def forward_encoder(self, src_tokens, **kwargs):
+        return self.encoder(src_tokens, **kwargs)
+
+    def forward_decoder(self, prev_output_tokens,encoder_out = None, incremental_state = None,**kwargs):
+        return self.decoder(prev_output_tokens,encoder_out,incremental_state, **kwargs)
 
     def extract_features(self, src_tokens, prev_output_tokens, **kwargs):
         """
@@ -249,7 +252,6 @@ class ConvS2SEncoder(PaddleEncoder):
         # project to size of convolution
         x = self.fc1(x)
         # used to mask padding in input # 注意！变成是否是非pad，pad部分为0，否则1
-        # mask！！！！！有可能要改哦
         src_mask = paddle.cast(src_tokens != self.pad_id,
                                dtype=paddle.get_default_dtype()).unsqueeze([-1])  # ->  B x T x 1
         src_mask.stop_gradient = True
@@ -311,6 +313,14 @@ class ConvS2SEncoder(PaddleEncoder):
             "encoder_out": (x.transpose((0, 2, 1)), y),  # ncl,nlc
             "src_mask": src_mask,  # B x T
         }
+
+    def reorder_encoder_out(self, encoder_out, new_order):
+        if encoder_out["encoder_out"] is not None:
+            encoder_out["encoder_out"] = tuple(eo.index_select(index=new_order,axis=0) for eo in encoder_out["encoder_out"])
+        if encoder_out["src_mask"] is not None:
+            src_mask=paddle.cast(encoder_out["src_mask"],dtype='int64')
+            encoder_out["src_mask"] = paddle.cast(src_mask.index_select(index=new_order,axis=0),dtype='bool')
+        return encoder_out
 
     def max_positions(self):
         """Maximum input length supported by the encoder."""
@@ -473,16 +483,15 @@ class ConvS2SDecoder(PaddleDecoder):
         if encoder_out is not None:
             src_mask = encoder_out["src_mask"]
             encoder_out = encoder_out["encoder_out"]
-
         if self.embed_positions is not None:
             pos_embed = self.embed_positions(prev_output_tokens, incremental_state)
         else:
             pos_embed = 0
-
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]  # 取最后一列，增量翻译。按说beam里面一次输入一列来着？？？???修改beamdecoder的step就行了！
 
         x = self._embed_tokens(prev_output_tokens, incremental_state)
+
         # embed tokens and combine with positional embeddings
         x += pos_embed
         x = self.dropout_module(x)
@@ -490,6 +499,7 @@ class ConvS2SDecoder(PaddleDecoder):
 
         # project to size of convolution # N x L x C
         x = self.fc1(x)
+
         # train: -> T x B x C | inference:BTC
         # x = self._transpose_if_training(x, incremental_state)
 
@@ -508,17 +518,16 @@ class ConvS2SDecoder(PaddleDecoder):
             x = self.dropout_module(x)
             if incremental_state is None:
                 x = conv(x, incremental_state)
+
             else:
                 cache = incremental_state[i % len(incremental_state)]  # 取第i个cache,当k<1时候无cache,拿前面的伪造下(不会用到)
                 x, cache = conv(x, cache)
                 incremental_state[i % len(incremental_state)] = cache  # 若<1,cache传进去并原封不动传回来
             x = F.glu(x, axis=2)
-            # if is_diff(x.numpy(), out_dic[f'conv_{i}'], msg=f'conv{i}'): print(f'conv{i} diff')
 
             # attention
             if attention is not None:
                 # x = self._transpose_if_training(x, incremental_state) #BTC =NLC
-                # 注意力分数需不需要重新排？
                 x, attn_scores = attention(
                     x, target_embedding, encoder_out, src_mask
                 )
@@ -534,6 +543,7 @@ class ConvS2SDecoder(PaddleDecoder):
             # residual
             if residual is not None:
                 x = (x + residual) * (0.5 ** 0.5)
+
             residuals.append(x)
         # T x B x C -> B x T x C
         # x = self._transpose_if_training(x, incremental_state)
@@ -543,6 +553,7 @@ class ConvS2SDecoder(PaddleDecoder):
             x = self.fc2(x)
             x = self.dropout_module(x)
             x = self.fc3(x)
+
         return (x, avg_attn_scores) if incremental_state is None else (x, avg_attn_scores, incremental_state)
 
     def gen_caches(self, memory):
@@ -567,6 +578,12 @@ class ConvS2SDecoder(PaddleDecoder):
             tokens = tokens[:, -1:]  # 取token最后一列
         return self.embed_tokens(tokens)
 
+    def reorder_incremental_state(self, incremental_state, new_order): # incremental_state就是caches
+        new_caches = []
+        for cache in incremental_state:
+            new_buffer=paddle.index_select(cache.input_buffer,index=new_order,axis=0)
+            new_caches.append(LinearizedConvolution.Cache(input_buffer=new_buffer))
+        return new_caches
 
 class ConvS2SBeamSearchDecoder(nn.decode.BeamSearchDecoder):
     """
@@ -656,7 +673,7 @@ class ConvS2SBeamSearchDecoder(nn.decode.BeamSearchDecoder):
         # Steps for decoding.
         # Compared to RNN, ConvS2S has 3D data at every decoding step
         inputs = paddle.reshape(inputs, [-1, 1])  # beam*bsz x 1
-        # 获取cell_states并合并bsz和beam （就是incremental_states）[bsz*beam,3,in_channels]
+        # 获取cell_states并合并bsz和beam （就是incremental_state）[bsz*beam,3,in_channels]
         cell_states = map_structure(self._merge_batch_beams_with_var_dim,
                                     states.cell_states)
         # cell_outputs:[bsz*beam,1,vocab_size]
@@ -698,9 +715,10 @@ class InferConvS2SModel(ConvS2SModel):
                  dropout=0.1,
                  decoder_attention=True,
                  share_embed=False,
-                 pad_id=1,
                  bos_id=0,
+                 pad_id=1,
                  eos_id=2,
+                 unk_id=3,
                  beam_size=5,
                  max_out_len=256,
                  output_time_major=False,
@@ -718,12 +736,11 @@ class InferConvS2SModel(ConvS2SModel):
         if self.beam_search_version == 'v2':
             self.alpha = kwargs.get("alpha", 0.6)
             self.rel_len = kwargs.get("rel_len", False)
-        # self.max_out_len=None # 使用max_src_len+20
         super(InferConvS2SModel, self).__init__(**args)
 
         cell = self.decoder
         self.beam_decode = ConvS2SBeamSearchDecoder(
-            cell, eos_id, eos_id, beam_size, var_dim_in_state=2)
+            cell, bos_id, eos_id, beam_size, var_dim_in_state=2)
 
     @paddle.no_grad()
     def forward(self, src_tokens):
@@ -813,9 +830,9 @@ class InferConvS2SModel(ConvS2SModel):
         inf = float(1. * 1e7)
         batch_size = enc_output['encoder_out'][0].shape[0]  # [bsz dim len]
         src_len = enc_output['encoder_out'][0].shape[2]
-        max_len = (src_len + 20) if max_len is None else (  # max_len没设置默认是<=src_len+20,比最长的长20（会不会是解码的时候也是短句先行）
-            src_len + max_len if self.rel_len else max_len)  # max_len有的情况下，如果是相对长度，则<=src_len+max_len；否则就算绝对不超过max_len
-
+        # max_len = (src_len + 20) if max_len is None else (  # max_len没设置默认是<=src_len+20,比最长的长20（会不会是解码的时候也是短句先行）
+        #     src_len + max_len if self.rel_len else max_len)  # max_len有的情况下，如果是相对长度，则<=src_len+max_len；否则就算绝对不超过max_len
+        max_len=(src_len+max_len) if self.rel_len else max_len
         ### 2.initialize states of beam search ### (不作修改)
         ## init for the alive
         initial_log_probs = paddle.assign(
@@ -847,7 +864,10 @@ class InferConvS2SModel(ConvS2SModel):
         tgt_word = paddle.reshape(alive_seq[:, :, -1],
                                   [batch_size * beam_size, 1])
         # expand:[bsz beam len]->merge:[bsz*beam len]
-        src_mask = merge_beam_dim(expand_to_beam_size(enc_output["src_mask"], beam_size))
+        if enc_output["src_mask"] is not None:
+            src_mask = merge_beam_dim(expand_to_beam_size(enc_output["src_mask"], beam_size))
+        else:
+            src_mask=None
         z = merge_beam_dim(
             expand_to_beam_size(enc_output['encoder_out'][0], beam_size))  # encoder output z: [bsz*beam dim src_len]
         z_e = merge_beam_dim(expand_to_beam_size(enc_output['encoder_out'][1],
@@ -1099,7 +1119,8 @@ def extend_conv_spec(convolutions):
 
 
 def Embedding(num_embeddings, embedding_dim, pad_id):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=pad_id)
+    # m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=pad_id)
+    m = nn.Embedding(num_embeddings, embedding_dim)
     normal_(m.weight)
     zeros_(m.weight[pad_id])
     return m
@@ -1146,7 +1167,7 @@ def ConvNLC(in_channels, out_channels, kernel_size, dropout=0.0, **kwargs):
 
 def _create_convs2s(variant, is_test, pretrained_path, args):
     if not is_test:
-        del args['beam_size'], args['max_out_len']
+        del args['beam_size'], args['max_out_len'],args['rel_len'],args['alpha']
         model = ConvS2SModel(**args)
         print(f'Train model {variant} created!')
     else:
@@ -1220,6 +1241,3 @@ def convs2s_wmt_en_fr(is_test=False, pretrained_path=None, **kwargs):
     model_args = base_architecture(model_args)
     model = _create_convs2s('convs2s_wmt_en_fr', is_test, pretrained_path, model_args)
     return model
-
-
-

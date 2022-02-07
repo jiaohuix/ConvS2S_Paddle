@@ -34,12 +34,12 @@ class ConvNLC(nn.Layer):
         xavier_normal_(self.weight)
         zeros_(self.bias)
 
-    def conv_tbc(self, input: Tensor):
+    def conv_nlc(self, input: Tensor):
         ''' input: [N L C]'''
         return F.conv1d(input,self.weight,self.bias,padding=self.padding[0],data_format='NLC')
 
     def forward(self, input: Tensor):
-        return self.conv_tbc(input)
+        return self.conv_nlc(input)
 
     def __repr__(self):
         s = (

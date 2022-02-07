@@ -10,11 +10,11 @@ def num_tokens_vec_fn(indices,src_sizes,tgt_sizes):
         sizes = np.maximum(sizes, tgt_sizes[indices])
     return sizes
 
-def ordered_indices(src_sizes,tgt_sizes,epoch,shuffle=True,buckets=None):
+def ordered_indices(src_sizes,tgt_sizes,common_seed,shuffle=True,buckets=None):
     """Return an ordered list of indices. Batches will be constructed based
     on this order."""
     if shuffle:
-        indices = np.random.RandomState(epoch).permutation(len(src_sizes)).astype(np.int64)
+        indices = np.random.RandomState(common_seed).permutation(len(src_sizes)).astype(np.int64)
     else:
         indices = np.arange(len(src_sizes), dtype=np.int64)
     if buckets is None:
