@@ -99,10 +99,12 @@ python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --e
 以英罗马翻译数据为例，模型训练完成后可以执行以下命令对指定文件中的文本进行翻译：
 
 ```shell
-python generate.py --cfg configs/en2ro.yaml \
-				   --test-pref wmt16_enro/test \ 
-				   --pretrained ./model_best \
-				   --beam-size 5
+python generate.py --cfg configs/en2ro.yaml \ # 配置文件
+				   --test-pref wmt16_enro_bpe/test \ #测试文件前缀 
+				   --pretrained ./model_best \ #权重
+				   --beam-size 5 \ # 术搜索宽度
+				   --generate-path generate.txt \ # 源文、目标文、预测结果（乱序）
+				   --sorted-path result.txt # 翻译结果（顺序）
 ```
 
 训练、验证曲线使用visualdl生成，命令为：

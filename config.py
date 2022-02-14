@@ -64,7 +64,7 @@ def get_arguments():
     parser.add_argument('--beam-size', default=5, type=int, help='beam search size')
     parser.add_argument('--n-best', default=1, type=int)
     parser.add_argument('--generate-path', default='generate.txt', type=str)
-    parser.add_argument('--sorted_path', default='result.txt', type=str)
+    parser.add_argument('--sorted-path', default='result.txt', type=str)
 
 
     args = parser.parse_args()
