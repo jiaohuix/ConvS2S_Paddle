@@ -34,7 +34,7 @@ def get_arguments():
     parser.add_argument('--max-tokens', default=4000, type=int)
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--num-workers', default=1, type=int)
-    parser.add_argument('--pad-vocab', default='True', type=str)
+    parser.add_argument('--pad-vocab', default='False', type=str)
 
     # Model parameters
     parser.add_argument('--opt', default='nag', type=str, help='Optimizer')  # todo
