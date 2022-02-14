@@ -24,6 +24,7 @@ def generate(conf):
 
     logger.info('Prep | Loading models...')
     model = build_model(conf, is_test=True)
+    model.eval()
     scorer = BLEU()
     generator = SequenceGenerator(model, vocab_size=model.tgt_vocab_size, beam_size=conf.generate.beam_size)
     # 1.for batch
@@ -52,7 +53,6 @@ def generate(conf):
                                           symbol='subword_nmt')
             print("S-{}\t{}".format(sample_id, src_text), file=out_file)
             if has_target:
-                tgt_tokens_i = utils.strip_pad(tgt_tokens[i, :], model.pad_id)
                 tgt_text = utils.post_process(sentence=" ".join(tgt_vocab.to_tokens(test_dset[sample_id][1])),
                                               symbol='subword_nmt')
                 print("T-{}\t{}".format(sample_id, tgt_text), file=out_file)
@@ -76,10 +76,8 @@ def generate(conf):
                                       ),
                     file=out_file
                 )
-
                 # 3.3 记录得分（hypo target）token分数，是索引的
                 if has_target and j == 0:
-                    # scorer.add_inst(cand=hypo["tokens"],ref_list=[tgt_tokens_i])
                     scorer.add_inst(cand=hypo_str.split(), ref_list=[tgt_text.split()])
 
         # 记录句子数
