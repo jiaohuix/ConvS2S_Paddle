@@ -15,7 +15,7 @@ en-ro处理脚本：https://github.com/rsennrich/wmt16-scripts/blob/80e21e5/samp
 
 backtranslation数据：http://data.statmt.org/rsennrich/wmt16_backtranslations/en-ro 
 
-处理好的wmt16_enro： https://aistudio.baidu.com/aistudio/datasetdetail/110614
+处理好的wmt16_enro：https://aistudio.baidu.com/aistudio/datasetdetail/126881 
 
 ## 模型介绍
 
@@ -31,75 +31,99 @@ backtranslation数据：http://data.statmt.org/rsennrich/wmt16_backtranslations/
 
 ## 快速开始
 
-### 1.环境依赖
+### 1.初始准备
 
-安装命令：`pip install -r requirements`
+```shell
+# 克隆至本地
+git clone https://github.com/MiuGod0126/ConvS2S_Paddle.git
+cd ConvS2S_Paddle
+# 安装依赖
+pip install -r requirements
+# 将数据wmt16_enro和权重文件model_best下载到此处
+```
 
 ### 2.目录结构
 
 ```
-├── LICENSE
 ├── README.md
 ├── align.py # 对齐
-├── bleu.sh # 评估
 ├── ckpt # 权重
+├── config.py #命令行参数 
 ├── config #配置
-│   ├── base.yaml
 │   ├── en2de.yaml #英德
-│   └── en2ro.yaml
+│   └── en2ro.yaml #英罗马
 ├── data
-│   ├── __init__.py
 │   ├── data.py # 数据加载
 │   └── sampler.py # 采样器
-├── eval.py # 训练中验证
 ├── logs # 日志
-├── loss # 损失函数，速度太慢，弃置
+│   ├── vislogs # 训练曲线 
+├── valid.py # 模型验证
 ├── main.py # 主函数
 ├── main_multi_gpu.py #多卡训练脚本
 ├── models #模型文件
-├── predict.py # 生成预测翻译
-├── requirements.txt
-├── run_multi_gpu.sh # 多卡训练命令
-└── wmt14ende_newstest #数据集
+├── generate.py # 生成翻译并评估
+├── requirements.txt # 依赖
+└── wmt16_enro #数据集
 ```
 
 ### 3.模型训练
 
 以提供的英罗马翻译数据为例，可以执行如下命令进行模型训练：
 
-```
-单卡训练
+```shell
+# 单卡训练
 python main.py --config config/en2ro.yaml --mode train
-多卡训练
-bash run_multi_gpu.sh --config config/en2ro.yaml 
-					  -- last_epoch 100
-					  -- resume ckpt/epoch_100
+# 多卡训练
+python main_multi_gpu.py --cfg configs/en2ro.yaml \
+                         --amp \
+                         --ngpus 4  \
+                         --accum-iter 4 \
+                         --max-epoch 100 \
+                         --save-epoch 5 \
+                         --save-dir /root/paddlejob/workspace/output \
+                         --resume ''  \
+                         --last-epoch 0 \
+                         --log-steps 100 \
+                         --max-tokens 4000 \
+                         --lr 0.5 \
+                         --lr-shrink 0.9 \
+                         --patience 1
+# 模型验证
+python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --eval
 ```
 
 可以在 `config/en2ro.yaml` 件中设置相应的参数,如果要恢复训练需指定恢复的轮数last_epoch，和恢复的权重路径resume，其他参数详见yaml文件。
 
-### 4.模型推断
+### 4.预测评估
 
 以英罗马翻译数据为例，模型训练完成后可以执行以下命令对指定文件中的文本进行翻译：
 
-```
-# 先生成预测文件
-python main.py  --config config/en2ro.yaml --mode pred
-# 再用bleu.sh评估
-bash bleu.sh 
+```shell
+python generate.py --cfg configs/en2ro.yaml \
+				   --test-pref wmt16_enro/test \ 
+				   --pretrained ./model_best \
+				   --beam-size 5
 ```
 
-### 5.结果评估
+训练、验证曲线使用visualdl生成，命令为：
+
+```shell
+visualdl --logdir ./logs/vislogs --port 8080
+# 打开链接：localhost:8080
+```
+
+![curve](https://pic.gksec.com/20220214/fzgtAxje/NK_`1_0`AW5MJ_@1TR___BV.png)
 
 在enro数据集上训练了100epoch，目前还没达到原论文水平，相应对比如下：
 
-| Code    | Bleu  |
-| ------- | ----- |
-| fairseq | 30.02 |
-| 本项目  | 18.6  |
+| Code      | Bleu  |
+| --------- | ----- |
+| fairseq   | 30.02 |
+| this repo | 27-29 |
 
-### 6.相应链接
+### 5.相关链接
 
-- 权重(ende、enro各100epoch)：链接：https://pan.baidu.com/s/1_A4BSfrj7_Mz-9Jf7XAezg  提取码：65w6
+- enro数据链接：https://aistudio.baidu.com/aistudio/datasetdetail/126881 
+- 权重(enro)链接：https://pan.baidu.com/s/1gZGl_KQTgSNV9txE3TQMjQ 提取码：s8np 
 - aistudio：https://aistudio.baidu.com/aistudio/projectdetail/2328014
 
