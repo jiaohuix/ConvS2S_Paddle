@@ -121,7 +121,7 @@ visualdl --logdir ./logs/vislogs --port 8080
 | Code      | Bleu  |
 | --------- | ----- |
 | fairseq   | 30.02 |
-| this repo | 27-29 |
+| this repo | 34.23 |
 
 ### 5.相关链接
 
