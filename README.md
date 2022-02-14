@@ -112,7 +112,7 @@ visualdl --logdir ./logs/vislogs --port 8080
 # 打开链接：localhost:8080
 ```
 
-![curve](https://pic.gksec.com/20220214/fzgtAxje/NK_`1_0`AW5MJ_@1TR___BV.png)
+![curve](./imgs/curve.png)
 
 在enro数据集上训练了100epoch，目前还没达到原论文水平，相应对比如下：
 
