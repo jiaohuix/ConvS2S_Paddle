@@ -116,12 +116,12 @@ visualdl --logdir ./logs/vislogs --port 8080
 
 ![curve](./imgs/curve.png)
 
-在enro数据集上训练了100epoch，目前还没达到原论文水平，相应对比如下：
+在enro数据集上训练了23个epoch，bleu对比如下：
 
 | Code      | Bleu  |
 | --------- | ----- |
 | fairseq   | 30.02 |
-| this repo | 34.23 |
+| this repo | 29.99 |
 
 ### 5.相关链接
 
