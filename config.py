@@ -6,9 +6,7 @@ from yacs.config import CfgNode
 def get_arguments():
     """return argumeents, this will overwrite the config after loading yaml file"""
     parser = argparse.ArgumentParser(description='ConvS2S', add_help=True)
-    # parser.add_argument('-c', '--cfg', default=None, type=str,required=True, metavar='FILE', help='yaml file path')
     parser.add_argument('-c', '--cfg', default='configs/en2ro.yaml', type=str,required=True, metavar='FILE', help='yaml file path')
-    # parser.add_argument('-c', '--cfg', default='configs/ruzh_ifly.yaml', type=str, metavar='FILE', help='yaml file path')
     # distributed training parameters
     parser.add_argument('--amp', action='store_true')
     parser.add_argument('--eval', action='store_true')
@@ -26,6 +24,7 @@ def get_arguments():
     # Dataset parameters
     parser.add_argument('--src-lang', default=None, type=str)
     parser.add_argument('--tgt-lang', default=None, type=str)
+    parser.add_argument('--only-src', action='store_true')
     parser.add_argument('--train-pref', default=None, type=str)
     parser.add_argument('--valid-pref', default=None, type=str)
     parser.add_argument('--test-pref', default=None, type=str)
@@ -63,8 +62,8 @@ def get_arguments():
     # Generation parameters
     parser.add_argument('--beam-size', default=5, type=int, help='beam search size')
     parser.add_argument('--n-best', default=1, type=int)
-    parser.add_argument('--generate-path', default='generate.txt', type=str)
-    parser.add_argument('--sorted-path', default='result.txt', type=str)
+    parser.add_argument('--generate-path', default='', type=str)
+    parser.add_argument('--sorted-path', default='', type=str)
 
 
     args = parser.parse_args()
@@ -101,6 +100,8 @@ def get_config(args):
         conf.data.src_lang = args.src_lang
     if args.tgt_lang:
         conf.data.tgt_lang = args.tgt_lang
+    if args.only_src:
+        conf.data.has_target=False
     if args.train_pref:
         conf.data.train_pref = args.train_pref
     if args.valid_pref:

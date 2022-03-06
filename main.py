@@ -5,7 +5,7 @@ import argparse
 from data import prep_dataset,prep_loader,prep_vocab
 from utils import same_seeds
 from train import train_model
-from predict import predict
+# from predict import predict
 from attrdict import AttrDict
 from utils import get_logger
 from models import build_model
@@ -36,7 +36,7 @@ def main(args):
         model = build_model(conf, is_test=True)
         to_tokens=prep_vocab(conf)[1].to_tokens
         logger.info('Pred | Predicting...')
-        predict(conf,model,test_loader,to_tokens=to_tokens,logger=logger)
+        # predict(conf,model,test_loader,to_tokens=to_tokens,logger=logger)
 
     else:
         logger.info('Mode error!')

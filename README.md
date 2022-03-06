@@ -39,12 +39,31 @@ git clone https://github.com/MiuGod0126/ConvS2S_Paddle.git
 cd ConvS2S_Paddle
 # 安装依赖
 pip install -r requirements
-# 将数据wmt16_enro和权重文件model_best下载到此处
+# 准备数据（wmt16_enro_bpe内已包含训练、验证、测试各一百对）
+mkdir model_best
+# 将权重文件拷贝到./model_best,权重见第5节链接
+```
+
+如果想要处理自己的翻译数据，以俄中为例，先将数据组织成如下形式，然后运行命令：
+
+```shell
+# src=ru tgt=zh
+├── ruzh/
+│   ├── train.ru
+│   └── train.zh
+│   └── dev.ru-zh.ru # dev.src-tgt.src,验证集有时含两个方向，继续添加为dev.tgt-src.src
+│   └── dev.ru-zh.ru
+│   └── test.ru-zh.ru # test.src-tgt.src,测试集有时也含两个方向，继续添加为test.tgt-src.src
+│   └── test.ru-zh.zh  
+#运行处理脚本
+bash preprocess.sh ./ruzh ./ruzh_bpe ru zh 40000 #(in_dir out_dir src tgt bpe_operations)
 ```
 
 ### 2.目录结构
 
 ```
+├── wmt16_enro_bpe # 数据
+├── model_best # 权重文件
 ├── README.md
 ├── align.py # 对齐
 ├── ckpt # 权重
@@ -63,7 +82,6 @@ pip install -r requirements
 ├── models #模型文件
 ├── generate.py # 生成翻译并评估
 ├── requirements.txt # 依赖
-└── wmt16_enro #数据集
 ```
 
 ### 3.模型训练
@@ -92,7 +110,7 @@ python main_multi_gpu.py --cfg configs/en2ro.yaml \
 python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --eval
 ```
 
-可以在 `config/en2ro.yaml` 件中设置相应的参数,如果要恢复训练需指定恢复的轮数last_epoch，和恢复的权重路径resume，其他参数详见yaml文件。
+可以在 `configs/en2ro.yaml` 件中设置相应的参数,如果要恢复训练需指定恢复的轮数last_epoch，和恢复的权重路径resume，其他参数详见yaml文件。
 
 ### 4.预测评估
 
@@ -101,6 +119,7 @@ python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --e
 ```shell
 python generate.py --cfg configs/en2ro.yaml \ # 配置文件
 				   --test-pref wmt16_enro_bpe/test \ #测试文件前缀 
+				   --only-src \ #无tgt文件
 				   --pretrained ./model_best \ #权重
 				   --beam-size 5 \ # 术搜索宽度
 				   --generate-path generate.txt \ # 源文、目标文、预测结果（乱序）
@@ -121,7 +140,7 @@ visualdl --logdir ./logs/vislogs --port 8080
 | Code      | Bleu  |
 | --------- | ----- |
 | fairseq   | 30.02 |
-| this repo | 29.99 |
+| this repo | 34.23 |
 
 ### 5.相关链接
 

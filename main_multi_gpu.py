@@ -42,51 +42,54 @@ def train_one_epoch(dataloader,
         train_acc_meter.avg
         train_time
     """
+    world_size = paddle.distributed.get_world_size()
     model.train()
     # Train loop
     sentences = 0
     tic_train = time.time()
     for batch_id, input_data in enumerate(dataloader):
         (samples_id, src_tokens, prev_tokens, tgt_tokens) = input_data
-
-        if amp is True: # mixed precision training
-            # step 1 : skip gradient synchronization by 'no_sync'
-            with model.no_sync():
+        # for multi card training
+        if world_size>1:
+            if amp is True: # mixed precision training
+                # step 1 : skip gradient synchronization by 'no_sync'
+                with model.no_sync():
+                    with paddle.amp.auto_cast():
+                        logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
+                        sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
+                    scaled = scaler.scale(avg_cost)
+                    scaled.backward()
+                if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
+                    fused_allreduce_gradients(list(model.parameters()), None)
+                    scaler.minimize(optimizer, scaled)
+                    optimizer.clear_grad()
+            else: # full precision training
+                with model.no_sync():
+                    logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
+                    sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
+                    avg_cost.backward()
+                if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
+                    fused_allreduce_gradients(list(model.parameters()), None)
+                    optimizer.step()
+                    optimizer.clear_grad()
+        # for single card training
+        else:
+            if amp is True:  # mixed precision training
                 with paddle.amp.auto_cast():
                     logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                 scaled = scaler.scale(avg_cost)
                 scaled.backward()
-            if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
-                fused_allreduce_gradients(list(model.parameters()), None)
-                scaler.minimize(optimizer, scaled)
-                optimizer.clear_grad()
-        else: # full precision training
-            with model.no_sync():
+                if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
+                    scaler.minimize(optimizer, scaled)
+                    optimizer.clear_grad()
+            else:  # full precision training
                 logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                 sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                 avg_cost.backward()
-            if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
-                fused_allreduce_gradients(list(model.parameters()), None)
-                optimizer.step()
-                optimizer.clear_grad()
-
-        # if amp is True:  # mixed precision training
-        #     with paddle.amp.auto_cast():
-        #         logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
-        #         sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-        #     scaled = scaler.scale(avg_cost)
-        #     scaled.backward()
-        #     if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
-        #         scaler.minimize(optimizer, scaled)
-        #         optimizer.clear_grad()
-        # else:  # full precision training
-        #     logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
-        #     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-        #     avg_cost.backward()
-        #     if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
-        #         optimizer.step()
-        #         optimizer.clear_grad()
+                if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
+                    optimizer.step()
+                    optimizer.clear_grad()
 
         # aggregate metric
         loss, nll_loss, ppl = metric.update(sum_cost, logits, target=tgt_tokens, sample_size=token_num, pad_id=pad_idx)

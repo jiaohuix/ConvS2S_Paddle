@@ -16,6 +16,7 @@ def generate(conf):
     if not os.path.exists(conf.SAVE): os.makedirs(conf.SAVE)
     generate_path = os.path.join(conf.SAVE, conf.generate.generate_path)
     sorted_path = os.path.join(conf.SAVE, conf.generate.sorted_path)
+    # 当设置generate_path时，保存结果到文件，否则打印
     out_file = open(generate_path, 'w', encoding='utf-8') if conf.generate.generate_path else sys.stdout
     logger = get_logger(loggername=f"ConvS2S", save_path=conf.SAVE)
     test_dset = prep_dataset(conf, mode='test')
@@ -46,8 +47,6 @@ def generate(conf):
 
         # 2.for sample
         for i, sample_id in enumerate(samples["id"].tolist()):
-            # 删除pad
-            # src_tokens_i = utils.strip_pad(src_tokens[i, :], model.pad_id)
             # 解码src和tgt，并打印
             src_text = utils.post_process(sentence=" ".join(src_vocab.to_tokens(test_dset[sample_id][0])),
                                           symbol='subword_nmt')
@@ -80,12 +79,11 @@ def generate(conf):
                 if has_target and j == 0:
                     scorer.add_inst(cand=hypo_str.split(), ref_list=[tgt_text.split()])
 
-        # 记录句子数
-
     # 打印最终得分
     if has_target:
         logger.info(f"BlEU Score:{scorer.score() * 100:.4f}")
-    sort_file(gen_path=generate_path, out_path=sorted_path)
+    if conf.generate.generate_path:
+        sort_file(gen_path=generate_path, out_path=sorted_path)
 
 
 if __name__ == '__main__':
