@@ -8,17 +8,17 @@ out_folder=$2
 
 # suffix of source language files
 SRC=ru
-if [ ! -n "$3" ];then
+if [ ! -n $3 ];then
   SRC=$3
 fi
 # suffix of target language files
 TRG=zh
-if [ ! -n "$4" ];then
+if [ ! -n $4 ];then
   TRG=$4
 fi
 
 bpe_operations=40000
-if [ ! -n "$5" ];then
+if [ ! -n $5 ];then
   bpe_operations=$5
 fi
 pip install subword-nmt
