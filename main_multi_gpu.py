@@ -155,29 +155,50 @@ def main_worker(*args):
             logdir=os.path.join(conf.SAVE, f'vislogs/convs2s_{conf.data.src_lang}{conf.data.tgt_lang}'))
 
     # 4. Define optimizer and lr_scheduler
-    scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
-                                          patience=conf.learning_strategy.patience,
-                                          force_anneal=conf.learning_strategy.force_anneal,
-                                          factor=conf.learning_strategy.lr_shrink,
-                                          min_lr=conf.learning_strategy.min_lr)  # reduce the learning rate until it falls below 10−4
-    # scheduler=LinearDecayWithWarmup(learning_rate=conf.learning_strategy.learning_rate,
-    #                                 warmup=conf.learning_strategy.warmup,
-    #                                 last_epoch=conf.train.last_epoch,
-    #                                 total_steps=conf.train.max_epoch * conf.train.avg_steps)
+    scheduler = None
+    if conf.learning_strategy.sched == "plateau":
+        scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
+                                              patience=conf.learning_strategy.patience,
+                                              force_anneal=conf.learning_strategy.force_anneal,
+                                              factor=conf.learning_strategy.lr_shrink,
+                                              min_lr=conf.learning_strategy.min_lr)  # reduce the learning rate until it falls below 10−4
+    if conf.learning_strategy.sched == "warmup":
+        scheduler = LinearDecayWithWarmup(learning_rate=conf.learning_strategy.learning_rate,
+                                          warmup=conf.learning_strategy.warmup,
+                                          last_epoch=conf.train.last_epoch,
+                                          total_steps=conf.train.max_epoch * len(train_loader))
+    elif conf.learning_strategy.sched == "cosine":
+        scheduler = paddle.optimizer.lr.CosineAnnealingDecay(learning_rate=conf.learning_strategy.learning_rate,
+                                                             T_max=conf.train.max_epoch,
+                                                             last_epoch=conf.train.last_epoch)
 
     clip = paddle.nn.ClipGradByGlobalNorm(clip_norm=conf.learning_strategy.clip_norm)
-    optimizer = paddle.optimizer.Momentum(
-        learning_rate=scheduler,
-        momentum=conf.learning_strategy.momentum,
-        weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
-        use_nesterov=conf.learning_strategy.use_nesterov,
-        grad_clip=clip,
-        parameters=model.parameters())
+    optimizer=None
+    if conf.learning_strategy.optimizer=="nag":
+        optimizer = paddle.optimizer.Momentum(
+            learning_rate=scheduler,
+            momentum=conf.learning_strategy.momentum,
+            weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
+            use_nesterov=conf.learning_strategy.use_nesterov,
+            grad_clip=clip,
+            parameters=model.parameters())
+    elif conf.learning_strategy.optimizer=="adam":
+        optimizer = paddle.optimizer.Adam(
+            learning_rate=scheduler,
+            weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
+            grad_clip=clip,
+            parameters=model.parameters())
+    elif conf.learning_strategy.optimizer=="adamw":
+        optimizer = paddle.optimizer.AdamW(
+            learning_rate=scheduler,
+            weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
+            grad_clip=clip,
+            parameters=model.parameters())
 
     # 5. Load  resume  optimizer states
     if conf.train.resume:
-        model_path = os.path.join(conf.train.resume, 'convs2s.pdparams')
-        optim_path = os.path.join(conf.train.resume, 'convs2s.pdopt')
+        model_path = os.path.join(conf.train.resume, 'model.pdparams')
+        optim_path = os.path.join(conf.train.resume, 'model.pdopt')
         assert os.path.isfile(model_path) is True, f"File {model_path} does not exist."
         assert os.path.isfile(optim_path) is True, f"File {optim_path} does not exist."
         model_state = paddle.load(model_path)
@@ -243,7 +264,13 @@ def main_worker(*args):
             logwriter.add_scalar(tag='valid/bleu', step=epoch, value=dev_bleu)
 
         # adjust learning rate when val ppl stops improving.
-        scheduler.step(val_ppl)
+        if conf.learning_strategy.sched == "plateau":
+            scheduler.step(val_ppl)
+        elif conf.learning_strategy.sched == "warmup":
+            scheduler.step(global_step_id)
+        elif conf.learning_strategy.sched == "consine":
+            scheduler.step(global_step_id)
+
         # stop training when lr too small
         cur_lr = round(optimizer.get_lr(), 5)
         min_lr = round(conf.learning_strategy.min_lr, 5)

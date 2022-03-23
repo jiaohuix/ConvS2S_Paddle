@@ -161,8 +161,8 @@ class SequenceGenerator(nn.Layer):
 
         def get_normalized_probs(x):
             return F.log_softmax(x, axis=-1, dtype='float32')
-
-        attn = attn[:, -1, :]
+        if attn is not None:
+            attn = attn[:, -1, :]
         lprobs = get_normalized_probs(logits / temperature)[:, -1, :]  # [bsz,vocab_size]
         return lprobs, attn, incremental_state
 

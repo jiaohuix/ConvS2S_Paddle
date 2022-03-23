@@ -39,7 +39,7 @@ git clone https://github.com/MiuGod0126/ConvS2S_Paddle.git
 cd ConvS2S_Paddle
 # 安装依赖
 pip install -r requirements
-# 准备数据（wmt16_enro_bpe内已包含训练、验证、测试各一百对）
+# 准备数据（wmt16_enro_bpe内已包含训练100对、验证、测试各1000对）
 mkdir model_best
 # 将权重文件拷贝到./model_best,权重见第5节链接
 ```
@@ -89,9 +89,7 @@ bash preprocess.sh ./ruzh ./ruzh_bpe ru zh 40000 #(in_dir out_dir src tgt bpe_op
 以提供的英罗马翻译数据为例，可以执行如下命令进行模型训练：
 
 ```shell
-# 单卡训练
-python main.py --config config/en2ro.yaml --mode train
-# 多卡训练
+# 单卡或多卡训练（设置ngpus）
 python main_multi_gpu.py --cfg configs/en2ro.yaml \
                          --amp \
                          --ngpus 4  \
@@ -114,7 +112,7 @@ python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --e
 
 ### 4.预测评估
 
-以英罗马翻译数据为例，模型训练完成后可以执行以下命令对指定文件中的文本进行翻译：
+以英罗马翻译数据为例，模型训练完成后可以执行以下命令对指定文件中的文本进行翻译，默认将翻译结果打印在终端，若要保存到文件，设置generate-path和sorted-path参数：
 
 ```shell
 python generate.py --cfg configs/en2ro.yaml \ # 配置文件
@@ -140,7 +138,7 @@ visualdl --logdir ./logs/vislogs --port 8080
 | Code      | Bleu  |
 | --------- | ----- |
 | fairseq   | 30.02 |
-| this repo | 34.23 |
+| this repo | 29.98 |
 
 ### 5.相关链接
 

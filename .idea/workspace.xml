@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="61232fee-c0a3-474a-ba9a-2284e3be418e" name="Default Changelist" comment="" />
+    <list default="true" id="61232fee-c0a3-474a-ba9a-2284e3be418e" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main_multi_gpu.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_multi_gpu.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/beam_search.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/beam_search.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wmt16_enro_bpe/dev.en" beforeDir="false" afterPath="$PROJECT_DIR$/wmt16_enro_bpe/dev.en" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wmt16_enro_bpe/dev.ro" beforeDir="false" afterPath="$PROJECT_DIR$/wmt16_enro_bpe/dev.ro" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wmt16_enro_bpe/test.en" beforeDir="false" afterPath="$PROJECT_DIR$/wmt16_enro_bpe/test.en" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wmt16_enro_bpe/test.ro" beforeDir="false" afterPath="$PROJECT_DIR$/wmt16_enro_bpe/test.ro" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -33,10 +43,17 @@
       <option name="presentableId" value="Default" />
       <updated>1646556439888</updated>
       <workItem from="1646556441301" duration="3490000" />
+      <workItem from="1648006076794" duration="3112000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="2" />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="431" y="145" width="672" height="678" key="search.everywhere.popup" timestamp="1648007669953">
+      <screen x="0" y="0" width="1536" height="824" />
+    </state>
+    <state x="431" y="145" width="672" height="678" key="search.everywhere.popup/0.0.1536.824@0.0.1536.824" timestamp="1648007669953" />
   </component>
 </project>

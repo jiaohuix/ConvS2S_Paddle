@@ -19,7 +19,7 @@ def get_arguments():
     parser.add_argument('--resume', default='', type=str, help='resume from checkpoint')
     parser.add_argument('--last-epoch', default=0, type=int)
     parser.add_argument('--log-steps', default=100, type=int, help='Number of steps between log print.')
-    parser.add_argument('--report-bleu', default='True', type=str,help='report bleu when valid')
+    parser.add_argument('--report-bleu', action='store_true',help='report bleu when valid')
 
     # Dataset parameters
     parser.add_argument('--src-lang', default=None, type=str)
@@ -33,14 +33,14 @@ def get_arguments():
     parser.add_argument('--max-tokens', default=4000, type=int)
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--num-workers', default=1, type=int)
-    parser.add_argument('--pad-vocab', default='False', type=str)
+    parser.add_argument('--pad-vocab', action='store_true')
 
     # Model parameters
-    parser.add_argument('--opt', default='nag', type=str, help='Optimizer')  # todo
+    parser.add_argument('--opt', default='nag', type=str, help='Optimizer,support [nag|adam|adamw]')
     parser.add_argument('--arch', default=None, type=str, help='Name of model to train')
     parser.add_argument('--drop', default=None, type=float, help='Dropout rate')
     parser.add_argument('--pretrained', default=None, type=str, help='pretrained dir')
-    parser.add_argument('--save-model', default=None, type=str, help='pretrained dir')
+    parser.add_argument('--save-model', default=None, type=str, help='model save dir')
 
     # Optimizer parameters
     parser.add_argument('--clip-norm', default=None, type=float, help='Clip gradient norm')
@@ -49,8 +49,8 @@ def get_arguments():
 
     # Learning rate schedule parameters
     parser.add_argument('--lr', default=0.5, type=float, help='learning rate')
-    parser.add_argument('--sched', default='plateau', type=str, help='LR scheduler')  # todo
-    parser.add_argument('--reset-lr', default='False', type=str)
+    parser.add_argument('--sched', default='plateau', type=str, help='LR scheduler, support [plateau|wamup|cosine]')
+    parser.add_argument('--reset-lr',action='store_true',help='weather to reset learning rate to lr when in resume.')
     parser.add_argument('--min-lr', default=1e-4, type=float, help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--lr-shrink', default=0.5, type=float, help='lr shrink factor')
     parser.add_argument('--patience', default=1, type=int, help='patience epochs for Plateau LR scheduler')
@@ -62,8 +62,8 @@ def get_arguments():
     # Generation parameters
     parser.add_argument('--beam-size', default=5, type=int, help='beam search size')
     parser.add_argument('--n-best', default=1, type=int)
-    parser.add_argument('--generate-path', default='', type=str)
-    parser.add_argument('--sorted-path', default='', type=str)
+    parser.add_argument('--generate-path', default=None, type=str)
+    parser.add_argument('--sorted-path', default=None, type=str)
 
 
     args = parser.parse_args()
@@ -78,7 +78,7 @@ def get_config(args):
     if args.ngpus:
         conf.ngpus = len(paddle.static.cuda_places()) if args.ngpus == -1 else args.ngpus
     if args.eval:
-        conf.eval = True
+        conf.eval = args.eval
     if args.accum_iter:
         conf.train.accum_iter = args.accum_iter
     if args.max_epoch:
@@ -94,7 +94,7 @@ def get_config(args):
     if args.log_steps:
         conf.train.log_steps = args.log_steps
     if args.report_bleu:
-        conf.train.report_bleu = eval(str(args.report_bleu))
+        conf.train.report_bleu = args.report_bleu
     # Dataset parameters
     if args.src_lang:
         conf.data.src_lang = args.src_lang
@@ -111,7 +111,7 @@ def get_config(args):
     if args.vocab_pref:
         conf.data.vocab_pref = args.vocab_pref
     if args.pad_vocab:
-        conf.data.pad_vocab = eval(str(args.pad_vocab))
+        conf.data.pad_vocab = args.pad_vocab
     if args.max_tokens:
         conf.train.max_tokens = args.max_tokens
         conf.generate.max_tokens = args.max_tokens
@@ -143,7 +143,7 @@ def get_config(args):
     if args.lr:
         conf.learning_strategy.learning_rate = args.lr
     if args.reset_lr:
-        conf.learning_strategy.reset_lr = eval(str(args.reset_lr))
+        conf.learning_strategy.reset_lr = args.reset_lr
     if args.min_lr:
         conf.learning_strategy.min_lr = args.min_lr
     if args.lr_shrink:
