@@ -13,12 +13,12 @@ def get_arguments():
     parser.add_argument('--ngpus', default=-1, type=int)
     parser.add_argument('--accum-iter', default=1, type=int)
 
-    parser.add_argument('--max-epoch', default=100, type=int)
-    parser.add_argument('--save-epoch', default=10, type=int)
+    parser.add_argument('--max-epoch', default=None, type=int)
+    parser.add_argument('--save-epoch', default=None, type=int)
     parser.add_argument('--save-dir', default=None, type=str,help='save dir for model、log、generated text')
     parser.add_argument('--resume', default='', type=str, help='resume from checkpoint')
-    parser.add_argument('--last-epoch', default=0, type=int)
-    parser.add_argument('--log-steps', default=100, type=int, help='Number of steps between log print.')
+    parser.add_argument('--last-epoch', default=None, type=int, help='resume from epoch+1')
+    parser.add_argument('--log-steps', default=None, type=int, help='Number of steps between log print.')
     parser.add_argument('--report-bleu', action='store_true',help='report bleu when valid')
 
     # Dataset parameters
@@ -36,7 +36,7 @@ def get_arguments():
     parser.add_argument('--pad-vocab', action='store_true')
 
     # Model parameters
-    parser.add_argument('--opt', default='nag', type=str, help='Optimizer,support [nag|adam|adamw]')
+    parser.add_argument('--opt', default=None, type=str, help='Optimizer,support [nag|adam|adamw]')
     parser.add_argument('--arch', default=None, type=str, help='Name of model to train')
     parser.add_argument('--drop', default=None, type=float, help='Dropout rate')
     parser.add_argument('--pretrained', default=None, type=str, help='pretrained dir')
@@ -44,17 +44,17 @@ def get_arguments():
 
     # Optimizer parameters
     parser.add_argument('--clip-norm', default=None, type=float, help='Clip gradient norm')
-    parser.add_argument('--momentum', default=0.99, type=float, help='momentum')
-    parser.add_argument('--weight-decay', default=0.0, type=float, help='weight decay')
+    parser.add_argument('--momentum', default=None, type=float, help='momentum')
+    parser.add_argument('--weight-decay', default=None, type=float, help='weight decay')
 
     # Learning rate schedule parameters
-    parser.add_argument('--lr', default=0.5, type=float, help='learning rate')
-    parser.add_argument('--sched', default='plateau', type=str, help='LR scheduler, support [plateau|wamup|cosine]')
+    parser.add_argument('--lr', default=None, type=float, help='learning rate')
+    parser.add_argument('--sched', default=None, type=str, help='LR scheduler, support [plateau|wamup|cosine]')
     parser.add_argument('--reset-lr',action='store_true',help='weather to reset learning rate to lr when in resume.')
-    parser.add_argument('--min-lr', default=1e-4, type=float, help='lower lr bound for cyclic schedulers that hit 0')
-    parser.add_argument('--lr-shrink', default=0.5, type=float, help='lr shrink factor')
-    parser.add_argument('--patience', default=1, type=int, help='patience epochs for Plateau LR scheduler')
-    parser.add_argument('--force-anneal', default=50, type=int, help='anneal epochs for Plateau LR scheduler')
+    parser.add_argument('--min-lr', default=None, type=float, help='lower lr bound for cyclic schedulers that hit 0')
+    parser.add_argument('--lr-shrink', default=None, type=float, help='lr shrink factor')
+    parser.add_argument('--patience', default=None, type=int, help='patience epochs for Plateau LR scheduler')
+    parser.add_argument('--force-anneal', default=None, type=int, help='anneal epochs for Plateau LR scheduler')
 
     # Augmentation parameters
     parser.add_argument('--smoothing', default=0.1, type=float, help='Label smoothing')
