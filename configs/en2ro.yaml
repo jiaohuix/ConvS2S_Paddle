@@ -46,6 +46,8 @@ model:
 # This static learning_rate will be applied to the LearningRateScheduler
 # derived learning rate the to get the final learning rate.
 learning_strategy:
+  optimizer: nag
+  sched: plateau
   use_nesterov: True
   momentum: 0.99
   weight_decay: 0.0
