@@ -11,7 +11,7 @@ def get_arguments():
     parser.add_argument('--amp', action='store_true')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--ngpus', default=-1, type=int)
-    parser.add_argument('--accum-iter', default=1, type=int)
+    parser.add_argument('--update-freq', default=1, type=int)
 
     parser.add_argument('--max-epoch', default=None, type=int)
     parser.add_argument('--save-epoch', default=None, type=int)
@@ -36,20 +36,21 @@ def get_arguments():
     parser.add_argument('--pad-vocab', action='store_true')
 
     # Model parameters
-    parser.add_argument('--opt', default=None, type=str, help='Optimizer,support [nag|adam|adamw]')
     parser.add_argument('--arch', default=None, type=str, help='Name of model to train')
     parser.add_argument('--drop', default=None, type=float, help='Dropout rate')
     parser.add_argument('--pretrained', default=None, type=str, help='pretrained dir')
     parser.add_argument('--save-model', default=None, type=str, help='model save dir')
 
     # Optimizer parameters
+    parser.add_argument('--optim', default=None, type=str, help='Optimizer,support [nag|adam|adamw]')
     parser.add_argument('--clip-norm', default=None, type=float, help='Clip gradient norm')
     parser.add_argument('--momentum', default=None, type=float, help='momentum')
     parser.add_argument('--weight-decay', default=None, type=float, help='weight decay')
 
     # Learning rate schedule parameters
     parser.add_argument('--lr', default=None, type=float, help='learning rate')
-    parser.add_argument('--sched', default=None, type=str, help='LR scheduler, support [plateau|wamup|cosine]')
+    parser.add_argument('--sched', default=None, type=str, help='LR scheduler, support [plateau|wamup|cosine|noamdecay]')
+    parser.add_argument('--warmup', default=None, type=int, help='warmup steps')
     parser.add_argument('--reset-lr',action='store_true',help='weather to reset learning rate to lr when in resume.')
     parser.add_argument('--min-lr', default=None, type=float, help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--lr-shrink', default=None, type=float, help='lr shrink factor')
@@ -79,8 +80,8 @@ def get_config(args):
         conf.ngpus = len(paddle.static.cuda_places()) if args.ngpus == -1 else args.ngpus
     if args.eval:
         conf.eval = args.eval
-    if args.accum_iter:
-        conf.train.accum_iter = args.accum_iter
+    if args.update_freq:
+        conf.train.update_freq = args.update_freq
     if args.max_epoch:
         conf.train.max_epoch=args.max_epoch
     if args.save_epoch:
@@ -129,8 +130,8 @@ def get_config(args):
     if args.save_model:
         conf.model.save_model = args.save_model
     # Optimizer parameters
-    if args.opt:
-        conf.learning_strategy.optimizer = args.opt
+    if args.optim:
+        conf.learning_strategy.optimizer = args.optim
     if args.clip_norm:
         conf.learning_strategy.clip_norm = args.clip_norm
     if args.momentum:
@@ -142,6 +143,8 @@ def get_config(args):
         conf.learning_strategy.sched = args.sched
     if args.lr:
         conf.learning_strategy.learning_rate = args.lr
+    if args.warmup:
+        conf.learning_strategy.warmup = args.warmup
     if args.reset_lr:
         conf.learning_strategy.reset_lr = args.reset_lr
     if args.min_lr:

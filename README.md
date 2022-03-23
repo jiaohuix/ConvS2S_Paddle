@@ -56,7 +56,7 @@ mkdir model_best
 │   └── test.ru-zh.ru # test.src-tgt.src,测试集有时也含两个方向，继续添加为test.tgt-src.src
 │   └── test.ru-zh.zh  
 #运行处理脚本
-bash preprocess.sh ./ruzh ./ruzh_bpe ru zh 40000 #(in_dir out_dir src tgt bpe_operations)
+bash ./scripts/preprocess.sh ./ruzh ./ruzh_bpe ru zh 40000 #(in_dir out_dir src tgt bpe_operations)
 ```
 
 ### 2.目录结构
@@ -104,6 +104,8 @@ python main_multi_gpu.py --cfg configs/en2ro.yaml \
                          --lr 0.5 \
                          --lr-shrink 0.9 \
                          --patience 1
+#或
+bash ./scripts/run.sh
 # 模型验证
 python main_multi_gpu.py --cfg configs/en2ro.yaml  --pretrained ./model_best --eval
 ```
@@ -122,6 +124,8 @@ python generate.py --cfg configs/en2ro.yaml \ # 配置文件
 				   --beam-size 5 \ # 术搜索宽度
 				   --generate-path generate.txt \ # 源文、目标文、预测结果（乱序）
 				   --sorted-path result.txt # 翻译结果（顺序）
+#或
+bash ./scripts/generate.sh
 ```
 
 训练、验证曲线使用visualdl生成，命令为：

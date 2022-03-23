@@ -4,13 +4,15 @@ import paddle
 from valid import validation
 from data import prep_dataset, prep_loader
 from utils import same_seeds, save_model, \
-    ReduceOnPlateauWithAnnael, ConvS2SMetric, get_logger
+    ReduceOnPlateauWithAnnael, NMTMetric, get_logger, get_grad_norm
 from models import build_model
 import paddle.distributed as dist
 from paddlenlp.transformers import CrossEntropyCriterion, LinearDecayWithWarmup
 from config import get_config, get_arguments
+from paddle.optimizer.lr import CosineAnnealingDecay, NoamDecay
 from visualdl import LogWriter
 from paddle.distributed.fleet.utils.hybrid_parallel_util import fused_allreduce_gradients
+
 
 def train_one_epoch(dataloader,
                     model,
@@ -26,7 +28,7 @@ def train_one_epoch(dataloader,
                     pad_idx=1,
                     amp=False,
                     log_steps=100,
-                    accum_iter=1,
+                    update_freq=1,
                     scheduler=None):  # for warmup
     """Training for one epoch
     Args:
@@ -36,7 +38,7 @@ def train_one_epoch(dataloader,
         epoch: int, current epoch
         total_epoch: int, total num of epoch, for logging
         log_steps: int, num of iters to log info
-        accum_iter: int, num of iters for accumulating gradients
+        update_freq: int, num of iters for accumulating gradients
     Returns:
         train_loss_meter.avg
         train_acc_meter.avg
@@ -49,9 +51,10 @@ def train_one_epoch(dataloader,
     tic_train = time.time()
     for batch_id, input_data in enumerate(dataloader):
         (samples_id, src_tokens, prev_tokens, tgt_tokens) = input_data
+        gnorm = 0  # gradient norm
         # for multi card training
-        if world_size>1:
-            if amp is True: # mixed precision training
+        if world_size > 1:
+            if amp is True:  # mixed precision training
                 # step 1 : skip gradient synchronization by 'no_sync'
                 with model.no_sync():
                     with paddle.amp.auto_cast():
@@ -59,16 +62,18 @@ def train_one_epoch(dataloader,
                         sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                     scaled = scaler.scale(avg_cost)
                     scaled.backward()
-                if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
+                gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
+                if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
                     fused_allreduce_gradients(list(model.parameters()), None)
                     scaler.minimize(optimizer, scaled)
                     optimizer.clear_grad()
-            else: # full precision training
+            else:  # full precision training
                 with model.no_sync():
                     logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                     avg_cost.backward()
-                if ((batch_id + 1) % accum_iter == 0) or (batch_id+1==len(dataloader)):
+                    gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
+                if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
                     fused_allreduce_gradients(list(model.parameters()), None)
                     optimizer.step()
                     optimizer.clear_grad()
@@ -80,38 +85,46 @@ def train_one_epoch(dataloader,
                     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                 scaled = scaler.scale(avg_cost)
                 scaled.backward()
-                if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
+                gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
+                if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
                     scaler.minimize(optimizer, scaled)
                     optimizer.clear_grad()
             else:  # full precision training
                 logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                 sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
                 avg_cost.backward()
-                if ((batch_id + 1) % accum_iter == 0) or (batch_id + 1 == len(dataloader)):
+                gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
+                if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
                     optimizer.step()
                     optimizer.clear_grad()
 
         # aggregate metric
-        loss, nll_loss, ppl = metric.update(sum_cost, logits, target=tgt_tokens, sample_size=token_num, pad_id=pad_idx)
+        loss, nll_loss, ppl = metric.update(sum_cost, logits, target=tgt_tokens, sample_size=token_num, pad_id=pad_idx,
+                                            gnorm=gnorm)
         sentences += src_tokens.shape[0]
 
         # log
         if (batch_id + 1) % log_steps == 0:
             avg_bsz = sentences / (batch_id + 1)
-            avg_total_steps = len(dataloader.dataset) // avg_bsz // dist.get_world_size()
-            loss, nll_loss, ppl = metric.accumulate()
+            bsz = int(avg_bsz * update_freq)
+            avg_total_steps = int(len(dataloader.dataset) // avg_bsz // dist.get_world_size())  # Number of iterations of each epoch in a single card
+            cur_steps=avg_total_steps*(epoch-1)+batch_id+1 # current forward steps (single card)
+            num_updates = (cur_steps//update_freq) * dist.get_world_size()
+            loss, nll_loss, ppl, gnorm = metric.accumulate()
 
             logger.info(
-                f"Train | Epoch: [{epoch}/{max_epoch}] | Step: [{batch_id + 1}/{avg_total_steps}] | Avg bsz:{avg_bsz:.1f} "
-                f"Avg loss: {float(loss):.3f} | nll_loss:{float(nll_loss):.3f} | ppl: {float(ppl):.3f} | "
-                f"Speed:{log_steps / (time.time() - tic_train):.2f} step/s ")
+                f"Train | epoch:[{epoch}/{int(max_epoch)}], step:[{batch_id + 1}/{avg_total_steps}], bsz:{bsz}, "
+                f"speed:{log_steps / (time.time() - tic_train):.2f}step/s "
+                f"loss:{float(loss):.3f}, nll_loss:{float(nll_loss):.3f}, ppl:{float(ppl):.3f}, gnorm:{gnorm:.4f},num_updates:{num_updates}, lr:{optimizer.get_lr():.5f}")
             tic_train = time.time()
 
-        # if scheduler:scheduler.step()
         if dist.get_rank() == 0:
             logwriter.add_scalar(tag='train/loss', step=step_id, value=loss)
             logwriter.add_scalar(tag='train/ppl', step=step_id, value=ppl)
 
+        if isinstance(scheduler,
+                      (LinearDecayWithWarmup, CosineAnnealingDecay, NoamDecay)):  # these scheds  updated each step
+            scheduler.step(step_id)
         step_id += 1
 
     return step_id
@@ -147,7 +160,7 @@ def main_worker(*args):
     model = paddle.DataParallel(model)
     # 3. Define criterion
     criterion = CrossEntropyCriterion(conf.learning_strategy.label_smooth_eps, pad_idx=conf.model.pad_idx)
-    metric = ConvS2SMetric()
+    metric = NMTMetric(name=conf.model.model_name)
     logwriter = None
     best_bleu = 0
     if local_rank == 0:
@@ -155,6 +168,7 @@ def main_worker(*args):
             logdir=os.path.join(conf.SAVE, f'vislogs/convs2s_{conf.data.src_lang}{conf.data.tgt_lang}'))
 
     # 4. Define optimizer and lr_scheduler
+    global_step_id = conf.train.last_epoch * len(train_loader) + 1
     scheduler = None
     if conf.learning_strategy.sched == "plateau":
         scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
@@ -168,13 +182,19 @@ def main_worker(*args):
                                           last_epoch=conf.train.last_epoch,
                                           total_steps=conf.train.max_epoch * len(train_loader))
     elif conf.learning_strategy.sched == "cosine":
-        scheduler = paddle.optimizer.lr.CosineAnnealingDecay(learning_rate=conf.learning_strategy.learning_rate,
-                                                             T_max=conf.train.max_epoch,
-                                                             last_epoch=conf.train.last_epoch)
+        scheduler = CosineAnnealingDecay(learning_rate=conf.learning_strategy.learning_rate,
+                                         T_max=conf.train.max_epoch,
+                                         last_epoch=conf.train.last_epoch)
+    elif conf.learning_strategy.sched == "noamdecay":
+        scheduler = NoamDecay(d_model=conf.model.dmodel,
+                              warmup_steps=conf.learning_strategy.warmup,
+                              learning_rate=conf.learning_strategy.learning_rate,
+                              last_epoch=global_step_id)
+    assert scheduler is not None, "Sched should be [plateau|warmup|cosine]"
 
     clip = paddle.nn.ClipGradByGlobalNorm(clip_norm=conf.learning_strategy.clip_norm)
-    optimizer=None
-    if conf.learning_strategy.optimizer=="nag":
+    optimizer = None
+    if conf.learning_strategy.optimizer == "nag":
         optimizer = paddle.optimizer.Momentum(
             learning_rate=scheduler,
             momentum=conf.learning_strategy.momentum,
@@ -182,23 +202,25 @@ def main_worker(*args):
             use_nesterov=conf.learning_strategy.use_nesterov,
             grad_clip=clip,
             parameters=model.parameters())
-    elif conf.learning_strategy.optimizer=="adam":
+    elif conf.learning_strategy.optimizer == "adam":
         optimizer = paddle.optimizer.Adam(
             learning_rate=scheduler,
             weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
             grad_clip=clip,
             parameters=model.parameters())
-    elif conf.learning_strategy.optimizer=="adamw":
+    elif conf.learning_strategy.optimizer == "adamw":
         optimizer = paddle.optimizer.AdamW(
             learning_rate=scheduler,
             weight_decay=float(conf.learning_strategy.weight_decay),  # int object not callable error
             grad_clip=clip,
             parameters=model.parameters())
 
+    assert optimizer is not None, "Optimizer should be [nag|adam|adamw]"
+
     # 5. Load  resume  optimizer states
     if conf.train.resume:
-        model_path = os.path.join(conf.train.resume, 'model.pdparams')
-        optim_path = os.path.join(conf.train.resume, 'model.pdopt')
+        model_path = os.path.join(conf.train.resume, 'convs2s.pdparams')
+        optim_path = os.path.join(conf.train.resume, 'convs2s.pdopt')
         assert os.path.isfile(model_path) is True, f"File {model_path} does not exist."
         assert os.path.isfile(optim_path) is True, f"File {optim_path} does not exist."
         model_state = paddle.load(model_path)
@@ -223,7 +245,6 @@ def main_worker(*args):
     scale_init = conf.train.fp16_init_scale
     growth_interval = conf.train.growth_interval if conf.train.amp_scale_window else 2000
     scaler = paddle.amp.GradScaler(init_loss_scaling=scale_init, incr_every_n_steps=growth_interval)
-    global_step_id = conf.train.last_epoch * len(train_loader) + 1
     lowest_val_loss = 0
     num_runs = 0
     for epoch in range(last_epoch + 1, conf.train.max_epoch + 1):
@@ -244,8 +265,8 @@ def main_worker(*args):
             pad_idx=conf.model.pad_idx,
             amp=conf.train.amp,
             log_steps=conf.train.log_steps,
-            accum_iter=conf.train.accum_iter,
-            # scheduler=scheduler
+            update_freq=conf.train.update_freq,
+            scheduler=scheduler
         )
         metric.reset()
         # evaluate model on valid data after one epoch
@@ -263,13 +284,9 @@ def main_worker(*args):
             logwriter.add_scalar(tag='valid/ppl', step=epoch, value=val_ppl)
             logwriter.add_scalar(tag='valid/bleu', step=epoch, value=dev_bleu)
 
-        # adjust learning rate when val ppl stops improving.
+        # adjust learning rate when val ppl stops improving (each epoch).
         if conf.learning_strategy.sched == "plateau":
             scheduler.step(val_ppl)
-        elif conf.learning_strategy.sched == "warmup":
-            scheduler.step(global_step_id)
-        elif conf.learning_strategy.sched == "consine":
-            scheduler.step(global_step_id)
 
         # stop training when lr too small
         cur_lr = round(optimizer.get_lr(), 5)
@@ -298,7 +315,7 @@ def main_worker(*args):
     if (conf.model.save_model) and (local_rank == 0):
         save_model(model, optimizer, save_dir=os.path.join(conf.SAVE, conf.model.save_model, "epoch_final"))
 
-    if local_rank==0:
+    if local_rank == 0:
         logwriter.close()
 
 

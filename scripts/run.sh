@@ -1,0 +1,14 @@
+python main_multi_gpu.py --cfg configs/en2ro.yaml \
+                         --amp \
+                         --ngpus 1  \
+                         --accum-iter 4 \
+                         --max-epoch 100 \
+                         --save-epoch 5 \
+                         --save-dir /root/paddlejob/workspace/output \
+                         --resume ''  \
+                         --last-epoch 0 \
+                         --log-steps 100 \
+                         --max-tokens 4000 \
+                         --lr 0.5 \
+                         --lr-shrink 0.9 \
+                         --patience 1

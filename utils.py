@@ -21,15 +21,16 @@ def save_model(model,optimizer,save_dir,best_bleu=None):
     if  best_bleu: optim_state['LR_Scheduler'].setdefault('best_bleu',best_bleu) # save best bleu score in optim state
     paddle.save(optim_state,os.path.join(save_dir, "convs2s.pdopt"))
 
-class ConvS2SMetric(paddle.metric.Metric):
+class NMTMetric(paddle.metric.Metric):
     def __init__(self,name='convs2s'):
         self.smooth_loss=0
         self.nll_loss=0
         self.steps=0
+        self.gnorm=0
         self._name=name
 
     @paddle.no_grad()
-    def update(self,sum_loss,logits,target,sample_size,pad_id):
+    def update(self,sum_loss,logits,target,sample_size,pad_id,gnorm):
         '''
         :return: current batch loss,nll_loss,ppl
         '''
@@ -38,6 +39,7 @@ class ConvS2SMetric(paddle.metric.Metric):
         self.smooth_loss+=float(loss)
         self.nll_loss+=float(nll_loss)
         self.steps+=1
+        self.gnorm+=gnorm
         return loss,nll_loss,ppl
 
     def accumulate(self):
@@ -47,12 +49,14 @@ class ConvS2SMetric(paddle.metric.Metric):
         avg_loss=self.smooth_loss/self.steps
         avg_nll_loss=self.nll_loss/self.steps
         ppl=pow(2, min(avg_nll_loss, 100.))
-        return avg_loss,avg_nll_loss,ppl
+        gnorm=self.gnorm/self.steps
+        return avg_loss,avg_nll_loss,ppl,gnorm
 
     def reset(self):
         self.smooth_loss=0
         self.nll_loss=0
         self.steps=0
+        self.gnorm=0
 
     def name(self):
         """
@@ -297,3 +301,9 @@ def sort_file(gen_path='generate.txt',out_path='result.txt'):
     with open(out_path, 'w', encoding='utf-8') as fw:
         fw.write('\n'.join(result))
     print(f'write to file {out_path} success.')
+
+
+def get_grad_norm(grads):
+    norms=paddle.stack([paddle.norm(g,p=2) for g in grads])
+    gnorm=paddle.norm(norms,p=2)
+    return float(gnorm)

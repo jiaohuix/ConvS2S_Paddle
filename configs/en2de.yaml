@@ -50,6 +50,7 @@ learning_strategy:
   sched: plateau
   use_nesterov: True
   momentum: 0.99
+  warmup: 4000
   weight_decay: 0.0
   clip_norm: 0.1
   # The parameters for learning rate scheduling."Reduce the learning rate by an order of magnitude after each epoch until it falls below 10−4"
@@ -68,7 +69,7 @@ learning_strategy:
 # Hyparams for training:
 train:
   # Whether to use cuda
-  use_gpu: False
+  use_gpu: True
   num_workers: 1
   # The number of epoches for training
   max_epoch: 200
@@ -81,7 +82,7 @@ train:
   fp16_init_scale: 128
   amp_scale_window: False
   growth_interval: 128
-  accum_iter: 1
+  update_freq: 1
   # Args for reader, see reader.py for details
   log_steps: 400
   # max tokens per batch, eg: 2k 4k 6k (12g,24g,32g  use amp)
@@ -105,5 +106,5 @@ generate:
   alpha: 0.6
   rel_len: True
   # The file to output the translation results of predict_file to.
-  generate_path: "generate.txt"
-  sorted_path: "result.txt"
+  generate_path: ""
+  sorted_path: ""
