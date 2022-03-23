@@ -292,6 +292,7 @@ def main_worker(*args):
         cur_lr = round(optimizer.get_lr(), 5)
         min_lr = round(conf.learning_strategy.min_lr, 5)
         if (cur_lr <= min_lr) and (local_rank == 0):
+            logger.info("early stop since min lr is achieved.")
             save_model(model, optimizer, save_dir=os.path.join(conf.SAVE, conf.model.save_model, "min_lr"))
             break
 
