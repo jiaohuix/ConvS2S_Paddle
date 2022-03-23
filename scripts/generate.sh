@@ -3,5 +3,5 @@ python generate.py --cfg configs/en2ro.yaml \
 				   --only-src \
 				   --pretrained ./model_best \
 				   --beam-size 5 \
-#				   --generate-path generate.txt \
-#				   --sorted-path result.txt
+				   --generate-path generate.txt \
+				   --sorted-path result.txt
