@@ -1,7 +1,9 @@
+# -*- coding:utf-8 -*-
+import os
+import logging
 import math
 import random
 import paddle
-import matplotlib.pyplot as plt
 import paddle.nn.functional as F
 from paddle.optimizer.lr import ReduceOnPlateau
 from paddle import Tensor
@@ -182,24 +184,6 @@ def ExpDecayWithWarmup(warmup_steps,lr_start,lr_peak,lr_decay):
                                                  start_lr=lr_start, end_lr=lr_peak, verbose=True)
     return scheduler
 
-
-def draw_process(title,train_metric,val_metric,metric_name):
-    plt.figure()
-    plt.title(title, fontsize=24)
-    plt.xlabel("Epoch", fontsize=20)
-    plt.ylabel(metric_name, fontsize=20)
-    plt.plot(list(range(len(train_metric))), train_metric,'ro-',label=f'Train {metric_name}')
-    plt.plot(list(range(len(val_metric))), val_metric,'bs-',label=f'Val {metric_name}')
-    plt.legend()
-    plt.grid()
-    save_dir='image'
-    if not os.path.exists(save_dir):os.makedirs(save_dir)
-    plt.savefig(os.path.join(save_dir,metric_name))
-    # plt.show()
-
-# -*- coding:utf-8 -*-
-import os
-import logging
 
 def get_logger(loggername,save_path='.'):
     # 创建一个logger
