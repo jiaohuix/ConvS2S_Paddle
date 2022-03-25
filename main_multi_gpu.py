@@ -168,7 +168,7 @@ def main_worker(*args):
             logdir=os.path.join(conf.SAVE, f'vislogs/convs2s_{conf.data.src_lang}{conf.data.tgt_lang}'))
 
     # 4. Define optimizer and lr_scheduler
-    global_step_id = conf.train.last_epoch * len(train_loader) + 1
+    global_step_id = conf.train.last_epoch * len(train_loader) + 1 if train_loader is not None else 0
     scheduler = None
     if conf.learning_strategy.sched == "plateau":
         scheduler = ReduceOnPlateauWithAnnael(learning_rate=conf.learning_strategy.learning_rate,
