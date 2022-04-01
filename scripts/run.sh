@@ -1,7 +1,7 @@
 python main_multi_gpu.py --cfg configs/en2ro.yaml \
                          --amp \
                          --ngpus 1  \
-                         --accum-iter 4 \
+                         --update-freq 4 \
                          --max-epoch 100 \
                          --save-epoch 5 \
                          --save-dir /root/paddlejob/workspace/output \
