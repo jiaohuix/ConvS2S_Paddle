@@ -83,7 +83,7 @@ def generate(conf):
     # 打印最终得分
     if has_target:
         logger.info(f"BlEU Score:{scorer.score() * 100:.4f}")
-    if conf.generate.generate_path:
+    if conf.generate.generate_path and conf.generate.sorted_path:
         sort_file(gen_path=generate_path, out_path=sorted_path)
 
 
