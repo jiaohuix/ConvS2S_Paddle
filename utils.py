@@ -288,6 +288,6 @@ def sort_file(gen_path='generate.txt',out_path='result.txt'):
 
 
 def get_grad_norm(grads):
-    norms=paddle.stack([paddle.norm(g,p=2) for g in grads])
-    gnorm=paddle.norm(norms,p=2)
+    norms = paddle.stack([paddle.norm(g, p=2) for g in grads if g is not None])
+    gnorm = paddle.norm(norms, p=2)
     return float(gnorm)
