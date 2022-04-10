@@ -60,7 +60,6 @@ def train_one_epoch(dataloader,
                     with paddle.amp.auto_cast():
                         logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                         sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-                        avg_cost=avg_cost/update_freq
                     scaled = scaler.scale(avg_cost)
                     scaled.backward()
                 gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
@@ -72,7 +71,6 @@ def train_one_epoch(dataloader,
                 with model.no_sync():
                     logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-                    avg_cost=avg_cost/update_freq
                     avg_cost.backward()
                     gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
                 if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
@@ -85,7 +83,6 @@ def train_one_epoch(dataloader,
                 with paddle.amp.auto_cast():
                     logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                     sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-                    avg_cost=avg_cost/update_freq
                 scaled = scaler.scale(avg_cost)
                 scaled.backward()
                 gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
@@ -95,7 +92,6 @@ def train_one_epoch(dataloader,
             else:  # full precision training
                 logits = model(src_tokens=src_tokens, prev_output_tokens=prev_tokens)[0]
                 sum_cost, avg_cost, token_num = criterion(logits, tgt_tokens)
-                avg_cost=avg_cost/update_freq
                 avg_cost.backward()
                 gnorm = get_grad_norm(grads=[p.grad for p in optimizer._param_groups])
                 if ((batch_id + 1) % update_freq == 0) or (batch_id + 1 == len(dataloader)):
