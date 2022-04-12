@@ -274,16 +274,16 @@ def to_string(
     return post_process(sent,bpe_symbol)
 
 
-def sort_file(gen_path='generate.txt',out_path='result.txt'):
+def sort_file(gen_path='generate.txt', out_path='result.txt'):
     result = []
     with open(gen_path, 'r', encoding='utf-8') as f:
         for line in f.readlines():
             if line.startswith('H-'):
                 result.append(line.strip())
     result = sorted(result, key=lambda line: int(line.split('\t')[0].split('-')[1]))
-    result = [line.split('\t')[2].strip() for line in result]
+    result = [line.split('\t')[2].strip().replace("\n","")+"\n" for line in result] # 单句出现\n会导致行数不一致！
     with open(out_path, 'w', encoding='utf-8') as fw:
-        fw.write('\n'.join(result))
+        fw.write(''.join(result))
     print(f'write to file {out_path} success.')
 
 
